@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+
+{% block title %}Configuration Dashboard - Voice Forms{% endblock %}
+
+{% block nav_title %}Voice Forms Configuration{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6 sm:px-0">
+    <!-- Dashboard Header -->
+    <div class="mb-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Configuration Dashboard</h1>
+                <p class="text-gray-600 mt-2">Manage your voice-powered forms and track submissions</p>
+            </div>
+            <div class="flex space-x-4">
+                <a href="{% url 'create_form' %}" 
+                   class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                    Create New Form
+                </a>
+                <a href="{% url 'form_builder' %}" 
+                   class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                    Visual Builder
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Statistics Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="p-2 bg-blue-100 rounded-lg">
+                    <svg class="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-600">Total Forms</p>
+                    <p class="text-2xl font-semibold text-gray-900">{{ total_forms }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="p-2 bg-green-100 rounded-lg">
+                    <svg class="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-600">Completed Sessions</p>
+                    <p class="text-2xl font-semibold text-gray-900">{{ completed_sessions }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="p-2 bg-yellow-100 rounded-lg">
+                    <svg class="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-600">Active Sessions</p>
+                    <p class="text-2xl font-semibold text-gray-900">{{ active_sessions }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="p-2 bg-purple-100 rounded-lg">
+                    <svg class="w-6 h-6 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-gray-600">Success Rate</p>
+                    <p class="text-2xl font-semibold text-gray-900">
+                        {% if completed_sessions > 0 %}
+                            {{ completed_sessions|floatformat:1 }}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Forms List -->
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Your Forms</h2>
+        </div>
+        
+        {% if forms %}
+            <div class="divide-y divide-gray-200">
+                {% for form in forms %}
+                    <div class="px-6 py-4 hover:bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <h3 class="text-lg font-medium text-gray-900">
+                                    <a href="{% url 'form_detail' form.id %}" class="hover:text-blue-600">
+                                        {{ form.name }}
+                                    </a>
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">{{ form.description }}</p>
+                                <div class="flex items-center mt-2 space-x-4 text-sm text-gray-500">
+                                    <span>Created: {{ form.created_at|date:"M d, Y" }}</span>
+                                    {% if form.callback_url %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            Webhook Configured
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <a href="{% url 'form_detail' form.id %}" 
+                                   class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                                    View Details
+                                </a>
+                                <a href="{% url 'generate_magic_link' form.id %}" 
+                                   class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm">
+                                    Generate Link
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="px-6 py-12 text-center">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">No forms yet</h3>
+                <p class="mt-1 text-sm text-gray-500">Get started by creating your first voice-powered form.</p>
+                <div class="mt-6">
+                    <a href="{% url 'create_form' %}" 
+                       class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                        Create Form
+                    </a>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Start Guide</h3>
+            <ul class="space-y-2 text-sm text-gray-600">
+                <li>1. Create a new form or use a pre-built template</li>
+                <li>2. Configure your webhook callback URL</li>
+                <li>3. Generate a magic link for users</li>
+                <li>4. Receive form data via webhook</li>
+            </ul>
+            <a href="{% url 'create_form' %}" class="mt-4 inline-block text-blue-600 hover:text-blue-800 text-sm font-medium">
+                Start Now →
+            </a>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">API Integration</h3>
+            <p class="text-sm text-gray-600 mb-4">
+                Use our SDK endpoints to integrate voice forms into your application.
+            </p>
+            <a href="/api/sdk/" class="inline-block text-blue-600 hover:text-blue-800 text-sm font-medium">
+                View API Docs →
+            </a>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Analytics</h3>
+            <p class="text-sm text-gray-600 mb-4">
+                Track form completion rates and user engagement.
+            </p>
+            <a href="{% url 'analytics_dashboard' %}" class="inline-block text-blue-600 hover:text-blue-800 text-sm font-medium">
+                View Analytics →
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

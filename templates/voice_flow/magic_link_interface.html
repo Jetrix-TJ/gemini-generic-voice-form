@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ form_config.name }} - Voice Form{% endblock %}
+
+{% block nav_title %}{{ form_config.name }}{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6 sm:px-0">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">{{ form_config.name }}</h1>
+                    {% if form_config.description %}
+                        <p class="text-gray-600 mt-1">{{ form_config.description }}</p>
+                    {% endif %}
+                    <p class="text-sm text-gray-500 mt-2">Session: {{ magic_link_id|truncatechars:20 }}</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="status-indicator" class="status-indicator connecting">Connecting...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Error Message -->
+        <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"></div>
+        
+        <!-- Main Interface -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Voice Controls & Conversation -->
+            <div class="space-y-6">
+                <!-- Voice Controls -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Voice Controls</h2>
+                    
+                    <div class="flex items-center justify-center mb-4">
+                        <button id="recording-button" 
+                                class="recording-button inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors">
+                            <svg class="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"></path>
+                            </svg>
+                            Start Recording
+                        </button>
+                    </div>
+                    
+                    <div class="text-center text-sm text-gray-600">
+                        <p>Click the button above to start voice recording, or use text input below.</p>
+                    </div>
+                </div>
+                
+                <!-- Text Input -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Text Input</h2>
+                    <div class="flex space-x-2">
+                        <textarea id="text-input" 
+                                  rows="3"
+                                  class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  placeholder="Type your message here..."></textarea>
+                        <button id="send-button"
+                                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            Send
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Conversation -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Conversation</h2>
+                    <div id="conversation-area" class="h-64 overflow-y-auto border border-gray-200 rounded-md p-4 bg-gray-50">
+                        <div class="text-center text-gray-500">
+                            <p>Conversation will appear here once you start recording or send a message.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Progress & Checklist -->
+            <div class="space-y-6">
+                <!-- Overall Progress -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Progress</h2>
+                    <div class="mb-2">
+                        <div class="flex justify-between text-sm text-gray-600 mb-1">
+                            <span>Overall Progress</span>
+                            <span id="progress-text">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Dynamic Form Fields -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Form Fields</h2>
+                    <div id="form-fields-container" class="space-y-4">
+                        {% for section in form_schema.sections %}
+                            <div class="border border-gray-200 rounded-lg p-4">
+                                <h3 class="font-medium text-gray-900 mb-3">{{ section.title }}</h3>
+                                {% if section.description %}
+                                    <p class="text-sm text-gray-600 mb-3">{{ section.description }}</p>
+                                {% endif %}
+                                <div class="space-y-3">
+                                    {% for field in section.fields %}
+                                        <div class="field-item" data-field="{{ field.name }}">
+                                            <label class="block text-sm font-medium text-gray-700">{{ field.label }}</label>
+                                            {% if field.type == 'textarea' %}
+                                                <textarea data-field="{{ field.name }}" 
+                                                          rows="2"
+                                                          class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                                          placeholder="{{ field.placeholder }}"
+                                                          value="{{ current_data|default:'' }}">{{ current_data|default:'' }}</textarea>
+                                            {% elif field.type == 'select' %}
+                                                <select data-field="{{ field.name }}"
+                                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                                    <option value="">Select {{ field.label }}</option>
+                                                    {% for option in field.options %}
+                                                        <option value="{{ option.value }}" 
+                                                                {% if current_data == option.value %}selected{% endif %}>
+                                                            {{ option.label }}
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            {% else %}
+                                                <input type="{{ field.type }}" 
+                                                       data-field="{{ field.name }}"
+                                                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                                       placeholder="{{ field.placeholder }}"
+                                                       value="{{ current_data|default:'' }}">
+                                            {% endif %}
+                                            {% if field.required %}
+                                                <span class="text-red-500 text-xs">* Required</span>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Session Info -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Session Information</h2>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Session ID:</span>
+                            <span class="font-mono text-gray-900">{{ magic_link_id|truncatechars:20 }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Status:</span>
+                            <span id="session-status" class="text-gray-900">Initializing...</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Expires:</span>
+                            <span class="text-gray-900">{{ session.expires_at|date:"M d, Y H:i" }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'voice-flow-core.js' %}"></script>
+<script src="{% static 'voice-flow-ui.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Function to get CSRF token from cookies
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    // Initialize Voice Flow
+    const voiceFlow = new VoiceFlowCore({
+        websocketUrl: '{{ websocket_url }}'
+    });
+    
+    // Initialize UI
+    const voiceFlowUI = new VoiceFlowUI(voiceFlow);
+    
+    // Update session info
+    voiceFlow.on('onConnect', function() {
+        document.getElementById('session-status').textContent = 'Connected';
+    });
+    
+    voiceFlow.on('onDisconnect', function() {
+        document.getElementById('session-status').textContent = 'Disconnected';
+    });
+    
+    voiceFlow.on('onMessage', function(data) {
+        if (data.type === 'setup_complete') {
+            console.log('Setup complete:', data);
+            // Update status to show form is ready
+            document.getElementById('session-status').textContent = 'Ready';
+        } else if (data.type === 'progress_update') {
+            document.getElementById('progress-text').textContent = data.progress + '%';
+            document.getElementById('progress-bar').style.width = data.progress + '%';
+        } else if (data.type === 'field_saved') {
+            // Update form fields when saved
+            const fieldElement = document.querySelector(`[data-field="${data.field_name}"]`);
+            if (fieldElement && (fieldElement.tagName === 'INPUT' || fieldElement.tagName === 'TEXTAREA' || fieldElement.tagName === 'SELECT')) {
+                fieldElement.value = data.field_value;
+            }
+            // Update progress
+            updateProgress();
+        }
+    });
+    
+    function updateProgress() {
+        // Calculate progress based on completed fields
+        const totalFields = document.querySelectorAll('[data-field]').length;
+        const completedFields = document.querySelectorAll('[data-field]:not([value=""]):not([value=undefined])').length;
+        const progress = totalFields > 0 ? (completedFields / totalFields) * 100 : 0;
+        
+        document.getElementById('progress-text').textContent = Math.round(progress) + '%';
+        document.getElementById('progress-bar').style.width = progress + '%';
+    }
+    
+    // Handle form submission
+    function submitForm() {
+        const formData = {};
+        document.querySelectorAll('[data-field]').forEach(field => {
+            if (field.value && field.value.trim()) {
+                formData[field.dataset.field] = field.value;
+            }
+        });
+        
+        const csrfToken = getCookie('csrftoken');
+        
+        // Submit via magic link endpoint
+        fetch(`/voice/magic/{{ magic_link_id }}/submit/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = `/voice/magic/{{ magic_link_id }}/completed/`;
+            } else {
+                alert('Error submitting form: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Error submitting form: ' + error.message);
+        });
+    }
+    
+    // Add submit button
+    const submitButton = document.createElement('button');
+    submitButton.textContent = 'Submit Form';
+    submitButton.className = 'w-full mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium';
+    submitButton.addEventListener('click', submitForm);
+    document.getElementById('form-fields-container').appendChild(submitButton);
+    
+    // Handle page unload
+    window.addEventListener('beforeunload', function() {
+        voiceFlow.disconnect();
+    });
+});
+</script>
+{% endblock %}

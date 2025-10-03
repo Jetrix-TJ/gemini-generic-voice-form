@@ -1,0 +1,9 @@
+Django==5.2.5
+djangorestframework==3.16.1
+channels==4.0.0
+daphne==4.1.2
+python-dotenv==1.0.1
+requests==2.32.3
+google-genai==1.40.0
+Pillow==10.4.0
+whitenoise==6.7.0

@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Voice Interface - Forms{% endblock %}
+
+{% block nav_title %}Voice Forms{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6 sm:px-0">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Voice-Powered Forms</h1>
+                    <p class="text-gray-600">Session ID: {{ session_id }}</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div id="status-indicator" class="status-indicator connecting">Connecting...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Error Message -->
+        <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"></div>
+        
+        <!-- Main Interface -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Voice Controls & Conversation -->
+            <div class="space-y-6">
+                <!-- Voice Controls -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Voice Controls</h2>
+                    
+                    <div class="flex items-center justify-center mb-4">
+                        <button id="recording-button" 
+                                class="recording-button inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors">
+                            <svg class="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"></path>
+                            </svg>
+                            Start Recording
+                        </button>
+                    </div>
+                    
+                    <div class="text-center text-sm text-gray-600">
+                        <p>Click the button above to start voice recording, or use text input below.</p>
+                    </div>
+                </div>
+                
+                <!-- Text Input -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Text Input</h2>
+                    <div class="flex space-x-2">
+                        <textarea id="text-input" 
+                                  rows="3"
+                                  class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                  placeholder="Type your message here..."></textarea>
+                        <button id="send-button"
+                                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            Send
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Conversation -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Conversation</h2>
+                    <div id="conversation-area" class="h-64 overflow-y-auto border border-gray-200 rounded-md p-4 bg-gray-50">
+                        <div class="text-center text-gray-500">
+                            <p>Conversation will appear here once you start recording or send a message.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Progress & Checklist -->
+            <div class="space-y-6">
+                <!-- Overall Progress -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Progress</h2>
+                    <div class="mb-2">
+                        <div class="flex justify-between text-sm text-gray-600 mb-1">
+                            <span>Overall Progress</span>
+                            <span id="progress-text">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Checklist -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Form Checklist</h2>
+                    <div id="checklist-container" class="space-y-4">
+                        <div class="text-center text-gray-500">
+                            <p>Checklist will appear here as information is collected.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Session Info -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Session Information</h2>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Session ID:</span>
+                            <span class="font-mono text-gray-900">{{ session_id }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Status:</span>
+                            <span id="session-status" class="text-gray-900">Initializing...</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Form ID:</span>
+                            <span id="form-id" class="font-mono text-gray-900">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'voice-flow-core.js' %}"></script>
+<script src="{% static 'voice-flow-ui.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Voice Flow
+    const voiceFlow = new VoiceFlowCore({
+        websocketUrl: '{{ websocket_url }}'
+    });
+    
+    // Initialize UI
+    const voiceFlowUI = new VoiceFlowUI(voiceFlow);
+    
+    // Update session info
+    voiceFlow.on('onConnect', function() {
+        document.getElementById('session-status').textContent = 'Connected';
+    });
+    
+    voiceFlow.on('onDisconnect', function() {
+        document.getElementById('session-status').textContent = 'Disconnected';
+    });
+    
+    voiceFlow.on('onMessage', function(data) {
+        if (data.type === 'setup_complete') {
+            document.getElementById('form-id').textContent = data.session_id;
+        }
+    });
+    
+    voiceFlow.on('onChecklistUpdate', function(checklist) {
+        document.getElementById('progress-text').textContent = checklist.overall_progress + '%';
+    });
+    
+    // Handle page unload
+    window.addEventListener('beforeunload', function() {
+        voiceFlow.disconnect();
+    });
+});
+</script>
+{% endblock %}
