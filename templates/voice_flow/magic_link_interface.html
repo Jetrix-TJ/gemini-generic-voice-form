@@ -36,34 +36,20 @@
                     <h2 class="text-lg font-semibold text-gray-900 mb-4">Voice Controls</h2>
                     
                     <div class="flex items-center justify-center mb-4">
-                        <button id="recording-button" 
+                        <button id="main-conversation-button" 
                                 class="recording-button inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors">
                             <svg class="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20">
                                 <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"></path>
                             </svg>
-                            Start Recording
+                            <span id="button-text">Start Live Conversation</span>
                         </button>
                     </div>
                     
                     <div class="text-center text-sm text-gray-600">
-                        <p>Click the button above to start voice recording, or use text input below.</p>
+                        <p>Click the button above to start a live conversation with the AI.</p>
                     </div>
                 </div>
                 
-                <!-- Text Input -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Text Input</h2>
-                    <div class="flex space-x-2">
-                        <textarea id="text-input" 
-                                  rows="3"
-                                  class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                  placeholder="Type your message here..."></textarea>
-                        <button id="send-button"
-                                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            Send
-                        </button>
-                    </div>
-                </div>
                 
                 <!-- Conversation -->
                 <div class="bg-white rounded-lg shadow p-6">
@@ -166,8 +152,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'voice-flow-core.js' %}"></script>
-<script src="{% static 'voice-flow-ui.js' %}"></script>
+<script src="{% static 'simple-voice.js' %}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Function to get CSRF token from cookies
@@ -186,41 +171,40 @@ document.addEventListener('DOMContentLoaded', function() {
         return cookieValue;
     }
     
-    // Initialize Voice Flow
-    const voiceFlow = new VoiceFlowCore({
+    // Initialize Simple Voice Interface
+    const voiceInterface = new SimpleVoiceInterface({
         websocketUrl: '{{ websocket_url }}'
     });
     
-    // Initialize UI
-    const voiceFlowUI = new VoiceFlowUI(voiceFlow);
+    // Get the main conversation button
+    const mainButton = document.getElementById('main-conversation-button');
+    const buttonText = document.getElementById('button-text');
     
-    // Update session info
-    voiceFlow.on('onConnect', function() {
-        document.getElementById('session-status').textContent = 'Connected';
+    // Handle main button clicks
+    console.log('🔍 Looking for button elements:', {
+        mainButton: mainButton,
+        buttonText: buttonText
     });
     
-    voiceFlow.on('onDisconnect', function() {
-        document.getElementById('session-status').textContent = 'Disconnected';
-    });
-    
-    voiceFlow.on('onMessage', function(data) {
-        if (data.type === 'setup_complete') {
-            console.log('Setup complete:', data);
-            // Update status to show form is ready
-            document.getElementById('session-status').textContent = 'Ready';
-        } else if (data.type === 'progress_update') {
-            document.getElementById('progress-text').textContent = data.progress + '%';
-            document.getElementById('progress-bar').style.width = data.progress + '%';
-        } else if (data.type === 'field_saved') {
-            // Update form fields when saved
-            const fieldElement = document.querySelector(`[data-field="${data.field_name}"]`);
-            if (fieldElement && (fieldElement.tagName === 'INPUT' || fieldElement.tagName === 'TEXTAREA' || fieldElement.tagName === 'SELECT')) {
-                fieldElement.value = data.field_value;
+    if (mainButton && buttonText) {
+        console.log('✅ Button elements found, attaching click handler');
+        mainButton.addEventListener('click', function() {
+            console.log('🎯 Button clicked, isRecording:', voiceInterface.isRecording);
+            if (!voiceInterface.isRecording) {
+                // Start live conversation
+                voiceInterface.startRecording();
+                buttonText.textContent = 'Live Conversation Active';
+                mainButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                mainButton.classList.add('bg-green-600', 'hover:bg-green-700');
+                mainButton.disabled = true; // Disable after starting
             }
-            // Update progress
-            updateProgress();
-        }
-    });
+        });
+    } else {
+        console.error('❌ Button elements not found:', {
+            mainButton: mainButton,
+            buttonText: buttonText
+        });
+    }
     
     function updateProgress() {
         // Calculate progress based on completed fields
@@ -274,7 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle page unload
     window.addEventListener('beforeunload', function() {
-        voiceFlow.disconnect();
+        voiceInterface.disconnect();
     });
 });
 </script>

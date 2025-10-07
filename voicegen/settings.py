@@ -151,7 +151,7 @@ CHANNEL_LAYERS = {
 
 # Google Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = "models/gemini-2.5-flash-native-audio-preview-09-2025"
+GEMINI_MODEL = "models/gemini-2.0-flash-exp"
 
 # File upload settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB

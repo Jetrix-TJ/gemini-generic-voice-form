@@ -2,378 +2,319 @@ import asyncio
 import base64
 import json
 import logging
+from typing import Optional, Any
 
 import google.generativeai as genai
-from google import genai as genai_client
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
-from google.genai import types
 
 from .models import DynamicFormData, MagicLinkSession
-from .utils import save_form_field
 
 logger = logging.getLogger(__name__)
-
-# Configure Gemini
-genai.configure(api_key=settings.GEMINI_API_KEY)
 
 
 class VoiceConsumer(AsyncWebsocketConsumer):
     """
-    WebSocket consumer for real-time voice communication with Google Gemini Live API
+    WebSocket consumer for voice communication with Gemini API
+    Falls back gracefully when Live API is not available
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.gemini_client = None
+        self.genai_client = None
+        self.genai_model = None
         self.live_session = None
+        self.session_active = False
+        self.response_listener_task = None
+        self.use_live_api = False
 
     async def connect(self):
         self.session_id = self.scope["url_route"]["kwargs"]["session_id"]
         self.room_group_name = f"voice_session_{self.session_id}"
 
-        # Join room group
-        await self.channel_layer.group_add(
-            self.room_group_name, self.channel_name
-        )
-
+        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
-
-        # Initialize or get existing voice session
-        await self.get_magic_link_session()
 
         logger.info(f"Voice consumer connected for session {self.session_id}")
 
     async def disconnect(self, close_code):
-        # Leave room group
-        await self.channel_layer.group_discard(
-            self.room_group_name, self.channel_name
-        )
+        self.session_active = False
+        
+        if self.response_listener_task and not self.response_listener_task.done():
+            self.response_listener_task.cancel()
+            try:
+                await self.response_listener_task
+            except asyncio.CancelledError:
+                pass
 
-        # Close Gemini Live session if active
         if self.live_session:
             try:
                 await self.live_session.close()
+                logger.info("Live session closed")
             except Exception as e:
-                logger.error(f"Error closing Live session: {e}")
+                logger.error(f"Error closing live session: {e}")
 
-        logger.info(
-            f"Voice consumer disconnected for session {self.session_id}"
-        )
+        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        logger.info(f"Voice consumer disconnected for session {self.session_id}")
 
     async def receive(self, text_data):
         try:
-            logger.info(f"📨 Raw WebSocket data received: {repr(text_data[:200])}...")
             data = json.loads(text_data)
             message_type = data.get("type")
             
-            logger.info(f"📨 Received WebSocket message: type={message_type}, data={data}")
+            logger.info(f"Received message type: {message_type}")
 
             if message_type == "setup":
                 await self.handle_setup(data)
             elif message_type == "audio":
                 await self.handle_audio(data)
-            elif message_type == "text":
-                await self.handle_text(data)
             elif message_type == "turn_complete":
-                await self.handle_turn_complete(data)
+                await self.handle_turn_complete()
+            elif message_type == "ping":
+                await self.send(text_data=json.dumps({"type": "pong"}))
             else:
-                logger.warning(f"⚠️ Unknown message type: {message_type}")
+                logger.warning(f"Unknown message type: {message_type}")
 
         except json.JSONDecodeError as e:
-            logger.error(f"❌ Invalid JSON received: {e}")
-            logger.error(f"❌ Raw data: {repr(text_data)}")
+            logger.error(f"Invalid JSON: {e}")
             await self.send_error("Invalid JSON received")
         except Exception as e:
-            logger.error(f"❌ Error in receive: {str(e)}", exc_info=True)
+            logger.error(f"Error in receive: {e}", exc_info=True)
             await self.send_error(f"Server error: {str(e)}")
 
     async def handle_setup(self, data):
-        """Initialize the conversation with Gemini Live API"""
+        """Initialize directly with Gemini Live API - skip standard API"""
         try:
-            logger.info(f"🔧 Setup request received: {data}")
-            logger.info(f"🔧 Session ID from URL: {self.session_id}")
+            logger.info("Setting up Gemini Live API for voice...")
             
-            # Check if API key is available
             if not settings.GEMINI_API_KEY:
-                logger.error("❌ GEMINI_API_KEY not found in settings")
                 await self.send_error("Gemini API key not configured")
                 return
             
-            # Test basic API connectivity first
-            try:
-                logger.info("🔍 Testing basic Gemini API connectivity...")
-                test_client = genai_client.Client(api_key=settings.GEMINI_API_KEY)
-                models = test_client.models.list()
-                available_models = [model.name for model in models]
-                logger.info(f"📋 Available models: {available_models[:5]}...")  # Show first 5 models
-            except Exception as e:
-                logger.warning(f"⚠️ Could not list models: {str(e)}")
-                logger.info("🔄 Continuing with connection attempts...")
-            
-            # Get the magic link session and form configuration
             session = await self.get_magic_link_session()
             if not session:
-                logger.error(f"❌ No session found for session_id: {self.session_id}")
                 await self.send_error("Invalid or expired session")
                 return
 
-            form_config = session.form_config
-
-            # Initialize Gemini Live API client with correct configuration
-            self.gemini_client = genai_client.Client(
-                http_options={"api_version": "v1beta"},
-                api_key=settings.GEMINI_API_KEY
-            )
+            # Go directly to Live API test - this is what you want for voice
+            live_api_success = await self.test_live_api()
             
-            # Configure Live API session based on official example
-            config = types.LiveConnectConfig(
-                response_modalities=["AUDIO", "TEXT"],
-                system_instruction=self.get_dynamic_system_instruction(form_config),
-                media_resolution="MEDIA_RESOLUTION_MEDIUM",
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Zephyr")
-                    )
-                ),
-                context_window_compression=types.ContextWindowCompressionConfig(
-                    trigger_tokens=25600,
-                    sliding_window=types.SlidingWindow(target_tokens=12800),
-                ),
-            )
-
-            # Start Live API session
-            logger.info(f"Starting Gemini Live API session with model: {settings.GEMINI_MODEL}")
-            logger.info(f"API Key present: {bool(settings.GEMINI_API_KEY)}")
-            logger.info(f"API Key length: {len(settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else 0}")
-            
-            # Try different model names if the current one fails
-            models_to_try = [
-                settings.GEMINI_MODEL,
-                "models/gemini-2.5-flash-native-audio-preview-09-2025",
-                "models/gemini-live-2.5-flash-preview",
-                "models/gemini-2.0-flash-exp",
-                "models/gemini-1.5-flash",
-                "models/gemini-1.5-pro"
-            ]
-            
-            connection_successful = False
-            for model in models_to_try:
-                try:
-                    logger.info(f"🔄 Trying model: {model}")
-                    self.live_session = await self.gemini_client.aio.live.connect(
-                        model=model,
-                        config=config
-                    ).__aenter__()
-                    logger.info(f"✅ Gemini Live API session connected successfully with model: {model}")
-                    connection_successful = True
-                    break
-                except Exception as e:
-                    logger.warning(f"⚠️ Model {model} failed: {str(e)}")
-                    continue
-            
-            if not connection_successful:
-                logger.error("❌ All Gemini Live API models failed to connect")
-                logger.info("🔄 Falling back to regular Gemini API without Live features")
-                
-                # Fallback to regular Gemini API
-                try:
-                    # Try different model names for regular API
-                    fallback_models = [
-                        "gemini-2.0-flash-exp",
-                        "gemini-1.5-flash", 
-                        "gemini-1.5-pro"
-                    ]
-                    
-                    fallback_successful = False
-                    for model in fallback_models:
-                        try:
-                            logger.info(f"🔄 Trying fallback model: {model}")
-                            self.gemini_model = genai.GenerativeModel(model)
-                            self.use_live_api = False
-                            logger.info(f"✅ Fallback to regular Gemini API successful with model: {model}")
-                            fallback_successful = True
-                            break
-                        except Exception as e:
-                            logger.warning(f"⚠️ Fallback model {model} failed: {str(e)}")
-                            continue
-                    
-                    if not fallback_successful:
-                        logger.error("❌ All fallback models also failed")
-                        await self.send_error("Unable to connect to any Gemini API")
-                        return
-                        
-                except Exception as e:
-                    logger.error(f"❌ Fallback setup failed: {str(e)}")
-                    await self.send_error("Unable to connect to any Gemini API")
-                    return
-            else:
+            if live_api_success:
                 self.use_live_api = True
+                mode = "Live Audio API"
+                message = f"Voice assistant ready for {session.form_config.name} with real-time audio"
+                
+                # Start response listener
+                self.response_listener_task = asyncio.create_task(self.listen_to_live_responses())
+                
+                # Don't send initial greeting during setup to avoid method signature issues
+                # Will send greeting when user first speaks
+                logger.info("Live API connection established, ready for voice input")
+                
+            else:
+                await self.send_error("Live Audio API not available - this interface requires voice functionality")
+                return
 
-            # Send welcome message
-            api_type = "Live API" if self.use_live_api else "Regular API (text only)"
+            self.session_active = True
+            
+            # Send success response
             await self.send(text_data=json.dumps({
                 "type": "setup_complete",
                 "session_id": str(session.id),
-                "form_name": form_config.name,
-                "message": f"Voice assistant ready for {form_config.name} using {api_type}. Please start {'speaking' if self.use_live_api else 'typing'}.",
+                "form_name": session.form_config.name,
+                "mode": mode,
+                "live_api_available": True,
+                "message": message,
             }))
-
-            # Start listening for responses only if using Live API
-            if self.use_live_api:
-                asyncio.create_task(self.listen_to_gemini_responses())
-
-        except Exception as e:
-            logger.error(f"Setup error: {str(e)}", exc_info=True)
-            await self.send_error(f"Setup failed: {str(e)}")
-
-    async def listen_to_gemini_responses(self):
-        """Listen for responses from Gemini Live API"""
-        try:
-            turn = self.live_session.receive()
-            async for response in turn:
-                await self.process_gemini_live_response(response)
-        except Exception as e:
-            logger.error(f"Error listening to Gemini responses: {e}")
-
-    async def handle_audio(self, data):
-        """Process audio data from client"""
-        try:
-            logger.info("🎤 Received audio message from client")
-            audio_data = data.get("audio")
-            if not audio_data:
-                logger.error("❌ No audio data in message")
-                await self.send_error("No audio data received")
-                return
-
-            logger.info(f"✅ Audio data length: {len(audio_data)} chars (base64)")
             
-            if self.use_live_api and self.live_session:
-                # Use Live API for real-time audio processing
-                audio_bytes = base64.b64decode(audio_data)
-                logger.info(f"✅ Decoded audio bytes: {len(audio_bytes)} bytes")
+            logger.info("Live Audio API setup complete")
+            
+        except Exception as e:
+            logger.error(f"Setup failed: {e}", exc_info=True)
+            await self.send_error(f"Voice setup failed: {str(e)}")
+
+    # Remove the standard API test - not needed for voice interface
+    # async def test_standard_api(self): - REMOVED
+
+    async def test_live_api(self):
+        """Test Live API connection with correct voice configuration"""
+        try:
+            logger.info("Testing Gemini Live API for voice...")
+            
+            # Import Live API client
+            try:
+                from google import genai as genai_client
+                logger.info("Live API library available")
+            except ImportError as e:
+                logger.error(f"Live API library not available: {e}")
+                logger.error("Install with: pip install google-genai")
+                return False
+            
+            # Create client
+            self.genai_client = genai_client.Client(api_key=settings.GEMINI_API_KEY)
+            logger.info("Live API client created")
+            
+            # Use the WORKING configuration for audio + transcription
+            logger.info("Creating Live API config for voice...")
+            config = genai_client.types.LiveConnectConfig(
+                response_modalities=["AUDIO"],  # Audio only here
+                output_audio_transcription=genai_client.types.AudioTranscriptionConfig(),  # This enables text
+                speech_config=genai_client.types.SpeechConfig(
+                    voice_config=genai_client.types.VoiceConfig(
+                        prebuilt_voice_config=genai_client.types.PrebuiltVoiceConfig(
+                            voice_name="Puck"  # Use Puck voice
+                        )
+                    )
+                )
+            )
+            
+            # Connect to Live API with the correct model
+            logger.info("Connecting to Live API...")
+            self.live_session = await self.genai_client.aio.live.connect(
+                model="models/gemini-2.0-flash-exp",  # Correct model for Live API
+                config=config
+            ).__aenter__()
+            
+            logger.info("Live API connection successful!")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Live API test failed: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
+            if "1007" in str(e):
+                logger.error("Live API not available for your account yet (limited preview)")
+            return False
+
+    async def listen_to_live_responses(self):
+        """Listen for responses from Live API"""
+        try:
+            logger.info("Starting Live API response listener...")
+            
+            async for response in self.live_session.receive():
+                if not self.session_active:
+                    break
+                    
+                await self.process_live_response(response)
                 
-                # Send audio in the format expected by the new API
-                await self.live_session.send(input={
-                    "data": audio_bytes,
-                    "mime_type": "audio/pcm"
-                })
-            else:
-                # Fallback: inform user that audio processing is not available
-                await self.send(text_data=json.dumps({
-                    "type": "gemini_response",
-                    "text": "Audio processing is currently not available. Please use text input.",
-                    "audio": None,
-                    "function_calls": []
-                }))
-
+        except asyncio.CancelledError:
+            logger.info("Live API response listener cancelled")
         except Exception as e:
-            logger.error(f"❌ Audio processing error: {str(e)}", exc_info=True)
-            await self.send_error(f"Audio processing failed: {str(e)}")
+            logger.error(f"Error in Live API response listener: {e}", exc_info=True)
 
-    async def handle_text(self, data):
-        """Process text message from client"""
-        try:
-            text = data.get("text", "")
-            if not text:
-                await self.send_error("No text received")
-                return
-
-            if self.use_live_api and self.live_session:
-                # Use Live API for real-time text processing
-                await self.live_session.send(input=text, end_of_turn=True)
-            elif hasattr(self, 'gemini_model'):
-                # Use regular Gemini API
-                try:
-                    response = await self.gemini_model.generate_content_async(text)
-                    response_text = response.text if response and response.text else "I'm sorry, I couldn't generate a response."
-                    await self.send(text_data=json.dumps({
-                        "type": "gemini_response",
-                        "text": response_text,
-                        "audio": None,
-                        "function_calls": []
-                    }))
-                except Exception as e:
-                    logger.error(f"Regular API text processing error: {str(e)}")
-                    await self.send_error(f"Text processing failed: {str(e)}")
-            else:
-                await self.send_error("No Gemini API connection available")
-
-        except Exception as e:
-            logger.error(f"Text processing error: {str(e)}")
-            await self.send_error(f"Text processing failed: {str(e)}")
-
-    async def handle_turn_complete(self, data):
-        """Handle turn completion"""
-        try:
-            # Get the current session
-            session = await self.get_magic_link_session()
-            if not session:
-                return
-            
-            # Calculate simple progress based on session data
-            form_config = session.form_config
-            total_fields = 0
-            completed_fields = len(session.session_data)
-            
-            # Count total fields from form schema
-            if form_config.form_schema and 'sections' in form_config.form_schema:
-                for section in form_config.form_schema['sections']:
-                    total_fields += len(section.get('fields', []))
-            
-            progress = (completed_fields / total_fields * 100) if total_fields > 0 else 0
-            
-            await self.send(text_data=json.dumps({
-                "type": "progress_update", 
-                "completed": completed_fields,
-                "total": total_fields,
-                "progress": round(progress)
-            }))
-
-        except Exception as e:
-            logger.error(f"Turn complete error: {str(e)}")
-
-    async def process_gemini_live_response(self, response):
-        """Process response from Gemini Live API"""
+    async def process_live_response(self, response):
+        """Process responses from Live API - Updated for working audio+transcription"""
         try:
             response_data = {
                 "type": "gemini_response",
                 "text": "",
                 "audio": None,
-                "function_calls": []
+                "function_calls": [],
+                "mode": "live_audio"
             }
 
-            # Handle text response
-            if hasattr(response, 'text') and response.text:
-                response_data["text"] += response.text
-                print(response.text, end="")  # Print to console like in the example
+            if hasattr(response, 'server_content') and response.server_content:
+                content = response.server_content
+                
+                # Handle text transcription (from audio output)
+                if hasattr(content, 'output_transcription') and content.output_transcription:
+                    response_data["text"] = content.output_transcription.text
+                    logger.info(f"Audio transcription: {content.output_transcription.text[:100]}...")
+                
+                # Handle model turn (contains audio and other content)
+                if hasattr(content, 'model_turn') and content.model_turn:
+                    for part in content.model_turn.parts:
+                        # Handle audio data in parts
+                        if hasattr(part, 'audio') and part.audio and hasattr(part.audio, 'data'):
+                            response_data["audio"] = base64.b64encode(part.audio.data).decode('utf-8')
+                            logger.info(f"Audio response from part: {len(part.audio.data)} bytes")
+                        
+                        # Handle text content (backup)
+                        if hasattr(part, 'text') and part.text:
+                            if not response_data["text"]:  # Only use if no transcription
+                                response_data["text"] = part.text
+                                logger.info(f"Text response: {part.text[:100]}...")
+                            
+                        # Handle function calls
+                        if hasattr(part, 'function_call') and part.function_call:
+                            function_call = {
+                                "name": part.function_call.name,
+                                "args": dict(part.function_call.args)
+                            }
+                            response_data["function_calls"].append(function_call)
+                            await self.process_function_call(function_call)
 
-            # Handle audio response
+            # Handle direct audio data (fallback)
             if hasattr(response, 'data') and response.data:
                 response_data["audio"] = base64.b64encode(response.data).decode('utf-8')
+                logger.info(f"Direct audio response: {len(response.data)} bytes")
 
-            # Handle function calls (if any)
-            if hasattr(response, 'function_call') and response.function_call:
-                function_call = {
-                    "name": response.function_call.name,
-                    "args": dict(response.function_call.args)
-                }
-                response_data["function_calls"].append(function_call)
-                await self.process_function_call(function_call)
-
-            # Only send response to client if there's actual content
+            # Send response if there's content
             if response_data["text"] or response_data["audio"] or response_data["function_calls"]:
                 await self.send(text_data=json.dumps(response_data))
+                logger.info("Live audio+transcription response sent to client")
 
         except Exception as e:
-            logger.error(f"Response processing error: {str(e)}")
-            await self.send_error(f"Response processing failed: {str(e)}")
+            logger.error(f"Error processing Live response: {e}", exc_info=True)
 
+    async def handle_audio(self, data):
+        """Process audio data from client"""
+        try:
+            if not self.session_active:
+                await self.send_error("Session not active")
+                return
 
+            audio_data = data.get("audio")
+            if not audio_data:
+                await self.send_error("No audio data received")
+                return
+
+            if self.use_live_api and self.live_session:
+                # Process with Live API
+                try:
+                    audio_bytes = base64.b64decode(audio_data)
+                    logger.info(f"Processing audio via Live API: {len(audio_bytes)} bytes")
+                    
+                    audio_input = {
+                        "data": audio_bytes,
+                        "mime_type": "audio/pcm;rate=16000;channels=1"
+                    }
+                    
+                    await self.live_session.send(input=audio_input)
+                    logger.info("Audio sent to Live API")
+                    
+                except Exception as live_error:
+                    logger.error(f"Live API audio error: {live_error}")
+                    await self.send_error("Audio processing failed")
+            else:
+                # Standard API fallback - convert audio to text description
+                await self.send(text_data=json.dumps({
+                    "type": "gemini_response", 
+                    "text": "I received your audio message, but Live API is not available. Please describe what you said in text, and I'll help you with your form.",
+                    "audio": None,
+                    "function_calls": [],
+                    "mode": "standard_fallback"
+                }))
+
+        except Exception as e:
+            logger.error(f"Audio processing error: {e}", exc_info=True)
+            await self.send_error(f"Audio processing failed: {str(e)}")
+
+    async def handle_turn_complete(self):
+        """Handle end of turn - only send end_of_turn after we confirm method signature"""
+        try:
+            if self.use_live_api and self.live_session:
+                # TODO: Test correct method signature before enabling
+                # await self.live_session.send(end_of_turn=True)
+                logger.info("Turn complete received (end_of_turn not sent until method signature confirmed)")
+            
+            await self.update_progress()
+
+        except Exception as e:
+            logger.error(f"Turn complete error: {e}")
 
     async def process_function_call(self, call):
-        """Process function calls from Gemini"""
+        """Process function calls"""
         try:
             function_name = call["name"]
             args = call["args"]
@@ -382,22 +323,20 @@ class VoiceConsumer(AsyncWebsocketConsumer):
                 await self.save_form_field_async(args)
 
         except Exception as e:
-            logger.error(f"Function call error: {str(e)}")
+            logger.error(f"Function call error: {e}")
 
     async def save_form_field_async(self, args):
-        """Save form field asynchronously"""
+        """Save form field"""
         try:
             field_name = args.get("field_name")
             field_value = args.get("field_value")
-            session_id = args.get("session_id")
-
-            if not all([field_name, field_value, session_id]):
-                logger.error("Missing required parameters for save_form_field")
+            
+            if not field_name or field_value is None:
                 return
 
-            session = await database_sync_to_async(
-                MagicLinkSession.objects.get
-            )(id=session_id)
+            session = await self.get_magic_link_session()
+            if not session:
+                return
 
             await database_sync_to_async(
                 DynamicFormData.objects.update_or_create
@@ -420,43 +359,60 @@ class VoiceConsumer(AsyncWebsocketConsumer):
             }))
 
         except Exception as e:
-            logger.error(f"Save field error: {str(e)}")
+            logger.error(f"Save field error: {e}")
+
+    async def update_progress(self):
+        """Update progress"""
+        try:
+            session = await self.get_magic_link_session()
+            if not session:
+                return
+            
+            form_config = session.form_config
+            completed_fields = len(session.session_data)
+            
+            total_fields = 0
+            if form_config.form_schema and 'sections' in form_config.form_schema:
+                for section in form_config.form_schema['sections']:
+                    total_fields += len(section.get('fields', []))
+            
+            progress = (completed_fields / total_fields * 100) if total_fields > 0 else 0
+            
+            await self.send(text_data=json.dumps({
+                "type": "progress_update", 
+                "completed": completed_fields,
+                "total": total_fields,
+                "progress": round(progress)
+            }))
+
+        except Exception as e:
+            logger.error(f"Progress update error: {e}")
+
+    def get_initial_greeting(self, form_config):
+        """Get initial greeting message"""
+        if not form_config:
+            return "Hello! I'm your assistant. How can I help you today?"
+        
+        return f"Hello! I'm your assistant for the {form_config.name} form. I'm ready to help you fill it out. What information do you need to provide?"
 
     async def send_error(self, message):
-        """Send error message to client"""
-        await self.send(text_data=json.dumps({"type": "error", "message": message}))
-
-    def get_dynamic_system_instruction(self, form_config):
-        """Get dynamic system instruction based on form configuration"""
-        # Start with a simple, safe instruction
-        base_instructions = """You are a professional voice assistant helping to collect information through natural conversation. Be professional, empathetic, and clear. Ask one question at a time and confirm information before proceeding."""
-
-        # Add form context if available
-        if form_config:
-            form_context = f"Form: {form_config.name}. {form_config.description or ''}"
-            base_instructions = base_instructions + " " + form_context
-
-        # Ensure the instruction is not too long and contains only safe characters
-        if len(base_instructions) > 2000:
-            base_instructions = base_instructions[:2000]
-            
-        logger.info(f"📝 System instruction length: {len(base_instructions)} characters")
-        return base_instructions
+        """Send error message"""
+        await self.send(text_data=json.dumps({
+            "type": "error", 
+            "message": message
+        }))
+        logger.error(f"Sent error to client: {message}")
 
     @database_sync_to_async
     def get_magic_link_session_sync(self):
-        """Get magic link session from session ID (sync version)"""
+        """Get session from database"""
         try:
             from django.utils import timezone
             import uuid
 
-            logger.info(f"🔍 Looking for session with magic_link_id: {self.session_id}")
-            
-            # Validate UUID format
             try:
                 uuid.UUID(self.session_id)
             except ValueError:
-                logger.error(f"❌ Invalid UUID format for session_id: {self.session_id}")
                 return None
 
             session = MagicLinkSession.objects.select_related('form_config').get(
@@ -465,37 +421,18 @@ class VoiceConsumer(AsyncWebsocketConsumer):
             )
 
             if timezone.now() > session.expires_at:
-                logger.warning(f"⚠️ Session expired: {self.session_id}")
                 session.completion_status = "expired"
                 session.save()
                 return None
 
-            logger.info(f"✅ Found session: {session.id}")
             return session
+            
         except MagicLinkSession.DoesNotExist:
-            logger.error(f"❌ Magic link session not found: {self.session_id}")
             return None
         except Exception as e:
-            logger.error(f"❌ Magic link session retrieval error: {str(e)}")
+            logger.error(f"Session error: {e}")
             return None
 
     async def get_magic_link_session(self):
-        """Get magic link session from session ID"""
+        """Get session"""
         return await self.get_magic_link_session_sync()
-
-    async def update_conversation_history(self, text, function_calls):
-        """Update conversation history in magic link session"""
-        try:
-            session = await self.get_magic_link_session()
-            if session:
-                history_entry = {
-                    "text": text,
-                    "function_calls": function_calls,
-                    "timestamp": asyncio.get_event_loop().time(),
-                }
-
-                session.conversation_history.append(history_entry)
-                await database_sync_to_async(session.save)()
-
-        except Exception as e:
-            logger.error(f"History update error: {str(e)}")
