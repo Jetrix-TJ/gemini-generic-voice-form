@@ -114,6 +114,10 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                     # Track user's speech 
                     user_text = data.get('text', '')
                     self.conversation_history.append({'role': 'user', 'text': user_text})
+                elif data.get('type') == 'manual_complete':
+                    # Manual completion trigger from UI
+                    logger.info("Manual completion triggered by user")
+                    await self.handle_completion()
         except Exception as e:
             logger.error(f"Receive error: {e}", exc_info=True)
     
@@ -207,20 +211,35 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                         logger.debug(f"Received {len(data)} bytes of audio from Gemini")
                         self.audio_in_queue.put_nowait(data)
                         continue
+                    
+                    # Check response.text first
+                    text_content = None
                     if text := response.text:
+                        text_content = text
+                    # Check server_content as fallback (Gemini sends text here!)
+                    elif hasattr(response, 'server_content') and response.server_content:
+                        sc = response.server_content
+                        # Extract text from server_content
+                        if hasattr(sc, 'model_turn') and sc.model_turn:
+                            for part in sc.model_turn.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    text_content = part.text
+                                    break
+                    
+                    if text_content:
                         # Log and send transcript
-                        logger.info(f"Gemini says: {text}")
-                        self.conversation_history.append({'role': 'assistant', 'text': text})
+                        logger.info(f"Gemini says: {text_content}")
+                        self.conversation_history.append({'role': 'assistant', 'text': text_content})
                         
                         await self.send(text_data=json.dumps({
                             'type': 'transcript',
-                            'text': text,
+                            'text': text_content,
                             'speaker': 'assistant'
                         }))
                         
                         # Check if survey is complete
-                        if self.is_survey_complete(text):
-                            logger.info(f"Survey completion detected in text: {text}")
+                        if self.is_survey_complete(text_content):
+                            logger.info(f"Survey completion detected in text: {text_content}")
                             await self.handle_completion()
                 
                 logger.debug("Turn complete")
@@ -338,10 +357,15 @@ After ALL questions, say EXACTLY: "Thank you! Survey complete."
         """Trigger webhook delivery"""
         try:
             session = MagicLinkSession.objects.get(session_id=self.session_id)
-            if session.form_config.webhook_url:
+            form_config = session.form_config
+            webhook_url = getattr(form_config, 'webhook_url', None) or form_config.webhook_config.get('url') if hasattr(form_config, 'webhook_config') else None
+            
+            if webhook_url:
                 # Trigger async task
                 send_webhook.delay(session.session_id)
                 logger.info(f"Webhook triggered for session {self.session_id}")
+            else:
+                logger.info(f"No webhook configured for session {self.session_id}")
         except Exception as e:
             logger.error(f"Error triggering webhook: {e}")
     
