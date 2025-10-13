@@ -9,6 +9,7 @@ import sys
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.conf import settings
+from django.utils import timezone
 from .models import MagicLinkSession
 from .tasks import send_webhook
 
@@ -49,6 +50,9 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
         self.gemini_session = None
         self.form_config = None
         self.main_task = None
+        self.conversation_history = []  # Track conversation
+        self.current_field_index = 0  # Track which field we're on
+        self.collected_data = {}  # Store responses
         
         # Accept WebSocket connection
         await self.accept()
@@ -106,6 +110,10 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                 logger.debug(f"Control message: {data.get('type')}")
                 if data.get('type') == 'start':
                     logger.info("Client ready to start conversation")
+                elif data.get('type') == 'user_transcript':
+                    # Track user's speech 
+                    user_text = data.get('text', '')
+                    self.conversation_history.append({'role': 'user', 'text': user_text})
         except Exception as e:
             logger.error(f"Receive error: {e}", exc_info=True)
     
@@ -202,10 +210,18 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                     if text := response.text:
                         # Log and send transcript
                         logger.info(f"Gemini says: {text}")
+                        self.conversation_history.append({'role': 'assistant', 'text': text})
+                        
                         await self.send(text_data=json.dumps({
                             'type': 'transcript',
-                            'text': text
+                            'text': text,
+                            'speaker': 'assistant'
                         }))
+                        
+                        # Check if survey is complete
+                        if self.is_survey_complete(text):
+                            logger.info(f"Survey completion detected in text: {text}")
+                            await self.handle_completion()
                 
                 logger.debug("Turn complete")
                 
@@ -238,27 +254,96 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                 f"{i}. {field['name']} ({field['type']}, {req}): {field['prompt']}"
             )
         
-        return f"""
-You are conducting a voice form interview for: {self.form_config['form_name']}
-
-{self.form_config.get('ai_prompt', 'Hello! Let me ask you some questions.')}
-
-You need to collect the following information by asking questions ONE AT A TIME:
+        # Get first question
+        first_field = fields[0] if fields else None
+        first_prompt = first_field['prompt'] if first_field else "Hello!"
+        
+        return f"""You are a form interviewer. Ask ONLY these questions in order:
 
 {chr(10).join(field_list)}
 
-CRITICAL INSTRUCTIONS:
-1. IMMEDIATELY greet the user and ask question 1 - don't wait for them to speak first!
-2. Ask questions in order, ONE question at a time
-3. WAIT for the user's complete response before asking the next question
-4. Be friendly, warm, and conversational
-5. If a response is unclear, politely ask for clarification
-6. Briefly confirm each answer before moving to the next question
-7. After ALL questions are answered, say "That completes our survey! Thank you!"
-8. Keep responses brief and natural
+START NOW by saying ONLY this:
+"{self.form_config.get('ai_prompt', 'Hello!')} {first_prompt}"
 
-START NOW by greeting the user and asking question 1!
+Then WAIT for the answer. When you get an answer, say "Got it" and ask the next question.
+Keep all responses under 10 words. Do NOT chat - ONLY ask the form questions.
+
+After ALL questions, say EXACTLY: "Thank you! Survey complete."
 """
+    
+    def is_survey_complete(self, text):
+        """Check if survey is complete based on Gemini's response"""
+        # Check for completion phrases
+        text_lower = text.lower()
+        completion_phrases = [
+            'survey complete',
+            'survey complere',  # typo handling
+            'thank you! survey',
+            'that completes',
+            'all done'
+        ]
+        is_complete = any(phrase in text_lower for phrase in completion_phrases)
+        if is_complete:
+            logger.info(f"✅ COMPLETION PHRASE DETECTED: '{text}'")
+        return is_complete
+    
+    async def handle_completion(self):
+        """Handle survey completion"""
+        try:
+            logger.info(f"Survey completed for session {self.session_id}")
+            
+            # Save conversation history as collected data
+            await self.save_conversation()
+            
+            # Mark session as completed
+            await self.mark_session_completed()
+            
+            # Send completion message
+            await self.send(text_data=json.dumps({
+                'type': 'completed',
+                'message': self.form_config.get('success_message', 'Thank you! Survey completed.'),
+                'conversation': self.conversation_history
+            }))
+            
+            # Trigger webhook
+            await self.trigger_webhook()
+        except Exception as e:
+            logger.error(f"Error in handle_completion: {e}", exc_info=True)
+    
+    @database_sync_to_async
+    def save_conversation(self):
+        """Save conversation history to database"""
+        try:
+            session = MagicLinkSession.objects.get(session_id=self.session_id)
+            session.conversation_history = self.conversation_history
+            session.save()
+        except Exception as e:
+            logger.error(f"Error saving conversation: {e}")
+    
+    @database_sync_to_async
+    def mark_session_completed(self):
+        """Mark session as completed"""
+        try:
+            session = MagicLinkSession.objects.get(session_id=self.session_id)
+            session.status = 'completed'
+            session.completed_at = timezone.now()
+            if not session.collected_data:
+                session.collected_data = self.collected_data
+            session.save()
+        except Exception as e:
+            logger.error(f"Error marking session complete: {e}")
+    
+    @database_sync_to_async
+    def trigger_webhook(self):
+        """Trigger webhook delivery"""
+        try:
+            session = MagicLinkSession.objects.get(session_id=self.session_id)
+            if session.form_config.webhook_url:
+                # Trigger async task
+                send_webhook.delay(session.session_id)
+                logger.info(f"Webhook triggered for session {self.session_id}")
+        except Exception as e:
+            logger.error(f"Error triggering webhook: {e}")
     
     @database_sync_to_async
     def get_session_data(self):
