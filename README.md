@@ -1,321 +1,345 @@
-# Voice-Powered Patient Intake System
+# 🗣️ VoiceGen - AI Voice Form Service
 
-A Django-based voice-powered patient intake system that uses Google Gemini 2.5 Flash for natural language processing and real-time voice interactions. The system combines WebSocket communication, AI conversation management, and dynamic form completion to streamline hospital patient registration.
+Transform data collection with natural voice conversations powered by Google Gemini AI. VoiceGen allows you to create interactive voice forms that users can complete naturally through conversation, with all data automatically structured and delivered to your systems via webhooks.
 
-## Features
+## 🌟 Features
 
-- **Real-time Voice Processing**: Web Audio API integration with Google Gemini 2.5 Flash native audio dialog
-- **Dynamic Form Population**: AI-powered form completion with real-time validation
-- **WebSocket Communication**: Bidirectional real-time communication between client and server
-- **Comprehensive Data Collection**: Patient information, medical history, insurance, and consent forms
-- **File Upload Support**: Document and image attachment handling
-- **Progress Tracking**: Visual checklist with completion status
-- **Responsive Design**: Mobile-friendly interface with Tailwind CSS
+### Core Platform
 
-## Architecture
+- **🗣️ Natural Voice Conversations**: AI-powered voice interactions using Google Gemini 2.0 Flash (latest with native audio)
+- **⚡ Real-time Processing**: WebSocket-based live audio streaming and processing
+- **🔗 Magic Link Generation**: Create unique, shareable form sessions with expiration
+- **📡 Webhook Callbacks**: Receive structured data at your specified endpoints
+- **🎯 Zero Storage**: No data persistence - everything flows through to your systems
+- **📱 Mobile Optimized**: Responsive design works on all devices
 
-### Backend Components
-- **Django 5.2.5** with Django REST Framework 3.16.1
-- **Django Channels 4.1.0** for WebSocket support (ASGI application)
-- **SQLite database** (development) with comprehensive medical data models
-- **Google Gemini 2.5 Flash** integration with native audio dialog capabilities
+### Developer Experience
 
-### Frontend Components
-- **Vanilla JavaScript** with Web Audio API
-- **Tailwind CSS** for responsive design
-- **WebSocket client** for real-time communication
-- **Dynamic UI updates** based on AI responses
+- **🚀 RESTful API**: Clean, intuitive API for form creation and management
+- **📚 SDK Support**: Python SDK with more languages coming soon
+- **🔐 Secure Authentication**: API key-based authentication with webhook verification
+- **📊 Session Analytics**: Track completion rates, duration, and success metrics
+- **🛠️ Easy Integration**: Drop-in solution for any application stack
 
-### Data Models
-- **Appointment**: Comprehensive patient data structure (5 main sections)
-- **AppointmentAttachment**: File upload support for medical documents
-- **VoiceSession**: Voice conversation session tracking
+### Advanced Capabilities
 
-## Quick Start
+- **🎨 Configurable AI Prompts**: Customize conversation style and personality
+- **✅ Dynamic Validation**: Real-time field validation with custom rules
+- **🌍 Multi-language Support**: Support for multiple languages and dialects
+- **♿ Accessibility**: Screen reader compatible with WCAG 2.1 compliance
+- **🔄 Session Recovery**: Robust error handling with connection recovery
 
-### 1. Installation
+## 🚀 Quick Start
+
+### 1. Clone and Setup
 
 ```bash
-# Clone the repository
-git clone <repository-url>
+git clone https://github.com/your-org/voicegen.git
 cd voicegen
-
-# Create virtual environment
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Configuration
+### 2. Environment Configuration
 
-```bash
-# Copy environment file
-cp env.example .env
+Create `.env` file in the project root:
 
-# Edit .env file with your configuration
-# At minimum, you need:
-# SECRET_KEY=your-secret-key-here
-# GEMINI_API_KEY=your-gemini-api-key-here
+```env
+# Required
+GEMINI_API_KEY=your_gemini_api_key_here
+SECRET_KEY=your_django_secret_key
+DEBUG=True
+
+# Database (Optional - defaults to SQLite)
+DATABASE_URL=postgresql://user:pass@localhost:5432/voiceforms
+
+# Redis (Required for WebSocket support)
+REDIS_URL=redis://localhost:6379/0
+
+# Security
+ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
 ```
 
 ### 3. Database Setup
 
 ```bash
-# Run migrations
 python manage.py migrate
-
-# Create superuser (optional)
-python manage.py createsuperuser
+python manage.py createsuperuser  # Optional: for admin access
 ```
 
-### 4. Run the Server
+### 4. Run the Service
 
 ```bash
-# Development server
-python manage.py runserver
+# Development (WebSocket support required)
+daphne voicegen.asgi:application --port 8000
 
-# Or with Daphne (ASGI server for WebSocket support)
-daphne voicegen.asgi:application
+# Or with Docker
+docker-compose up --build
 ```
 
-### 5. Access the Application
+### 5. Create an API Key
 
-- Home page: http://localhost:8000/
-- Voice interface: http://localhost:8000/voice/
-- Admin panel: http://localhost:8000/admin/
-- API status: http://localhost:8000/api/status/
+```bash
+python manage.py shell
+```
 
-## Configuration
+```python
+from voice_flow.models import APIKey
+api_key = APIKey.objects.create(name="My First Key")
+print(f"API Key: {api_key.key}")
+```
 
-### Environment Variables
+### 6. Verify Installation
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `SECRET_KEY` | Django secret key | Yes | - |
-| `DEBUG` | Debug mode | No | True |
-| `GEMINI_API_KEY` | Google Gemini API key | Yes | - |
-| `DATABASE_URL` | Database URL (production) | No | SQLite |
-| `REDIS_URL` | Redis URL (production) | No | In-memory |
+```bash
+curl -X GET http://localhost:8000/health/
+# Should return: {"status": "healthy", "version": "1.0.0"}
+```
 
-### Google Gemini Setup
+## 📖 API Usage
 
-1. Get your API key from [Google AI Studio](https://aistudio.google.com/)
-2. Add it to your `.env` file:
-   ```
-   GEMINI_API_KEY=your-api-key-here
-   ```
+### Create a Form
 
-## API Endpoints
+```bash
+curl -X POST http://localhost:8000/api/forms/ \
+  -H "X-API-Key: your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Feedback Form",
+    "description": "Collect customer feedback through voice",
+    "fields": [
+      {
+        "name": "customer_name",
+        "type": "text",
+        "required": true,
+        "prompt": "What'\''s your full name?"
+      },
+      {
+        "name": "satisfaction_rating",
+        "type": "number",
+        "required": true,
+        "prompt": "On a scale of 1-10, how satisfied are you?",
+        "validation": {"min": 1, "max": 10}
+      }
+    ],
+    "ai_prompt": "Hello! I'\''m here to collect your feedback.",
+    "callback_url": "https://your-app.com/webhook/feedback",
+    "success_message": "Thank you for your feedback!"
+  }'
+```
 
-### REST API
-- `GET /api/appointments/` - List appointments
-- `POST /api/appointments/` - Create appointment
-- `GET /api/appointments/{id}/` - Get appointment details
-- `PATCH /api/appointments/{id}/` - Update appointment
-- `POST /api/appointments/{id}/update_field/` - Update specific field
-- `POST /api/appointments/{id}/validate_data/` - Validate appointment data
-- `POST /api/appointments/{id}/complete/` - Mark appointment as complete
-- `GET /api/appointments/{id}/checklist/` - Get checklist status
+### Generate Session Link
 
-### File Upload
-- `POST /api/attachments/` - Upload file attachment
+```bash
+curl -X POST http://localhost:8000/api/forms/{form_id}/generate-link/ \
+  -H "X-API-Key: your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_data": {"user_id": "123", "source": "email"},
+    "expires_in_hours": 48
+  }'
+```
 
-### Voice Sessions
-- `POST /api/sessions/` - Create voice session
-- `GET /api/sessions/{id}/` - Get session details
+## 🐍 Python SDK Usage
 
-### WebSocket
-- `ws://localhost:8000/ws/voice/{session_id}/` - Voice communication endpoint
+```python
+from voiceforms import VoiceFormSDK
+from voiceforms.client import create_text_field, create_number_field
 
-## Usage
+# Initialize SDK
+sdk = VoiceFormSDK(api_key='your_api_key')
 
-### Starting a Voice Session
+# Create a form
+form = sdk.create_form({
+    'name': 'Lead Qualification',
+    'fields': [
+        create_text_field('company_name', 'What company do you work for?'),
+        create_number_field('budget', 'What is your budget?', min_value=0)
+    ],
+    'ai_prompt': 'Hi! Let me help you get started.',
+    'callback_url': 'https://mycrm.com/webhook/leads'
+})
 
-1. Navigate to the voice interface
-2. Grant microphone permissions when prompted
-3. Click "Start Recording" to begin voice interaction
-4. Speak naturally - the AI will ask questions and collect information
-5. Watch the progress checklist update in real-time
+# Generate a session link
+session = sdk.generate_session_link(
+    form_id=form['form_id'],
+    session_data={'lead_source': 'website'},
+    expires_in_hours=48
+)
 
-### Text Input Alternative
+print(f"Magic link: {session['magic_link']}")
+```
 
-- Use the text input field for typing responses instead of voice
-- Useful for quiet environments or accessibility needs
+## 📡 Webhook Integration
 
-### File Uploads
+When a form is completed, data is sent to your `callback_url`:
 
-- Upload medical documents, insurance cards, or other relevant files
-- Supported formats: Images (JPEG, PNG), PDFs, Documents (DOC, DOCX, RTF, TXT)
-- Maximum file size: 10MB
+### Webhook Headers
 
-## Data Collection Areas
+```
+Content-Type: application/json
+X-VoiceForm-Signature: sha256=computed_signature
+X-VoiceForm-Session-ID: s_xyz789abc123
+User-Agent: VoiceForms-Webhook/1.0
+```
 
-The system collects comprehensive patient information across five main categories:
+### Webhook Payload
 
-### 1. Patient Information
-- Personal details (name, DOB, gender, SSN)
-- Contact information (phone, email, address)
-- Emergency contact information
+```json
+{
+  "form_id": "f_abc123xyz789",
+  "session_id": "s_xyz789abc123",
+  "completed_at": "2024-10-13T10:15:30Z",
+  "data": {
+    "customer_name": "John Smith",
+    "satisfaction_rating": 8
+  },
+  "metadata": {
+    "duration_seconds": 180,
+    "completion_percentage": 100,
+    "fields_completed": 2,
+    "total_fields": 2
+  }
+}
+```
 
-### 2. Visit Context
-- Visit type (new patient, follow-up, urgent care, etc.)
-- Reason for visit
-- Referring physician
-- Insurance information
+### Verify Webhook Signature
 
-### 3. Medical Information
-- Current symptoms
-- Medications
-- Allergies
-- Medical history
-- Family history
-- Current conditions
+```python
+import hmac
+import hashlib
+import json
 
-### 4. Accessibility
-- Preferred language
-- Interpreter needs
-- Mobility assistance
-- Hearing/visual assistance
+def verify_webhook(payload, signature, webhook_secret):
+    expected_signature = hmac.new(
+        webhook_secret.encode(),
+        json.dumps(payload, sort_keys=True).encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    return f"sha256={expected_signature}" == signature
+```
 
-### 5. Consent & Communication
-- Treatment consent
-- Billing consent
-- Communication preferences
-- Record sharing consent
+## 🏗️ Architecture
 
-## Development
+### Technology Stack
 
-### Project Structure
+**Backend:**
+- Django 5.0+ - Web framework and API
+- Django Channels - WebSocket support
+- Google Gemini 2.0 Flash - AI voice processing with native audio
+- PostgreSQL/SQLite - Database
+- Redis - Channel layer and caching
+- Celery - Background tasks
+
+**Frontend:**
+- Vanilla JavaScript - No framework dependencies
+- Web Audio API - Real-time audio capture
+- WebSocket API - Bidirectional communication
+- Tailwind CSS - Responsive UI
+
+## 📋 Field Types
+
+| Type | Description | Validation Options |
+|------|-------------|-------------------|
+| `text` | Free text input | min_length, max_length, pattern |
+| `number` | Numeric values | min, max, integer_only |
+| `email` | Email addresses | domain_whitelist |
+| `phone` | Phone numbers | country_code, format |
+| `date` | Date values | min_date, max_date |
+| `boolean` | Yes/No questions | - |
+| `choice` | Single selection | options (required) |
+| `multi_choice` | Multiple selections | options, min_choices, max_choices |
+
+## 🔧 Development
+
+### Running Tests
+
+```bash
+python manage.py test
+```
+
+### Code Structure
 
 ```
 voicegen/
-├── voicegen/              # Main Django project
-│   ├── settings.py        # Django settings
-│   ├── urls.py           # URL configuration
-│   ├── asgi.py           # ASGI configuration
-│   └── wsgi.py           # WSGI configuration
-├── voice_flow/           # Main application
-│   ├── models.py         # Data models
-│   ├── views.py          # API views
-│   ├── consumers.py      # WebSocket consumers
-│   ├── serializers.py    # API serializers
-│   ├── utils.py          # Utility functions
-│   └── routing.py        # WebSocket routing
-├── templates/            # HTML templates
-├── static/               # Static files
-│   ├── voice-flow-core.js    # Core JavaScript
-│   └── voice-flow-ui.js      # UI JavaScript
-└── requirements.txt      # Python dependencies
+├── voicegen/              # Django project root
+│   ├── settings.py        # Main configuration
+│   ├── urls.py            # URL routing
+│   └── asgi.py            # ASGI configuration
+├── voice_flow/            # Core application
+│   ├── models.py          # Data models
+│   ├── views.py           # API views
+│   ├── consumers.py       # WebSocket consumers
+│   ├── ai_service.py      # AI integration
+│   ├── tasks.py           # Background tasks
+│   └── serializers.py     # API serializers
+├── sdk/python/            # Python SDK
+├── templates/             # HTML templates
+├── static/                # Static assets
+└── docker-compose.yml     # Docker setup
 ```
 
-### Adding New Fields
-
-1. Update the `Appointment` model in `voice_flow/models.py`
-2. Run migrations: `python manage.py makemigrations && python manage.py migrate`
-3. Update the checklist in `voice_flow/utils.py`
-4. Update the admin interface in `voice_flow/admin.py`
-
-### Customizing AI Behavior
-
-Modify the system instruction in `voice_flow/consumers.py`:
-
-```python
-def get_system_instruction(self):
-    return """
-    Your custom instructions for the AI assistant...
-    """
-```
-
-## Deployment
-
-### Production Settings
-
-For production deployment, update your `.env` file:
+## 🐳 Docker Deployment
 
 ```bash
-DEBUG=False
-SECRET_KEY=your-production-secret-key
-DATABASE_URL=postgresql://user:password@localhost:5432/voicegen
-REDIS_URL=redis://localhost:6379/0
-ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+# Build and start all services
+docker-compose up --build
+
+# Run in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f web
+
+# Stop services
+docker-compose down
 ```
 
-### Docker Deployment (Optional)
+## ⚙️ Configuration
 
-Create a `Dockerfile`:
+### Environment Variables
 
-```dockerfile
-FROM python:3.11-slim
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | Yes | - | Google Gemini API key |
+| `SECRET_KEY` | Yes | - | Django secret key |
+| `DEBUG` | No | False | Debug mode |
+| `ALLOWED_HOSTS` | No | localhost | Allowed hosts |
+| `DATABASE_URL` | No | SQLite | PostgreSQL connection |
+| `REDIS_URL` | No | redis://localhost:6379/0 | Redis connection |
+| `WEBHOOK_TIMEOUT` | No | 30 | Webhook timeout (seconds) |
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+## 📚 Documentation
 
-COPY . .
-EXPOSE 8000
+- [API Documentation](docs/API.md)
+- [SDK Examples](docs/SDK_EXAMPLES.md)
+- [Webhook Guide](docs/WEBHOOKS.md)
+- [Deployment Guide](docs/DEPLOYMENT.md)
 
-CMD ["daphne", "voicegen.asgi:application", "--bind", "0.0.0.0", "--port", "8000"]
-```
+## 🤝 Contributing
 
-### Environment Requirements
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
 
-- Python 3.11+
-- PostgreSQL (production)
-- Redis (production, for WebSocket scaling)
-- SSL certificate (production)
+## 📄 License
 
-## Security Considerations
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-- All user data is encrypted in transit (HTTPS)
-- File uploads are validated for type and size
-- Input validation on all form fields
-- CSRF protection enabled
-- SQL injection protection via Django ORM
+## 🆘 Support
 
-## Troubleshooting
+- 📧 Email: support@voicegen.ai
+- 💬 Discord: [Join our community](https://discord.gg/voicegen)
+- 📖 Documentation: [docs.voicegen.ai](https://docs.voicegen.ai)
+- 🐛 Issues: [GitHub Issues](https://github.com/your-org/voicegen/issues)
 
-### Common Issues
+## 🙏 Acknowledgments
 
-1. **Microphone not working**: Check browser permissions and HTTPS requirement
-2. **WebSocket connection failed**: Verify server is running with ASGI support
-3. **Gemini API errors**: Check API key and quota limits
-4. **File upload errors**: Verify file type and size limits
+- Powered by Google Gemini AI
+- Built with Django and Django Channels
+- UI styled with Tailwind CSS
 
-### Debug Mode
+---
 
-Enable debug mode in `.env`:
-```
-DEBUG=True
-```
+Made with ❤️ by the VoiceGen Team
 
-Check browser console and Django logs for detailed error information.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Support
-
-For support and questions:
-- Create an issue on GitHub
-- Check the troubleshooting section
-- Review the API documentation
-
-## Roadmap
-
-- [ ] Multi-language support
-- [ ] Advanced analytics dashboard
-- [ ] Integration with EHR systems
-- [ ] Mobile app development
-- [ ] Advanced AI conversation flows
-- [ ] Real-time collaboration features

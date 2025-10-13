@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Session Completed{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+    <div class="bg-white rounded-lg shadow-lg p-8 text-center">
+        <div class="text-6xl mb-6">✅</div>
+        <h1 class="text-3xl font-bold text-gray-900 mb-4">Already Completed</h1>
+        <p class="text-gray-600 mb-6">
+            This form has already been completed. Thank you for your submission!
+        </p>
+        <div class="text-sm text-gray-500">
+            <p>Session ID: <code class="bg-gray-100 px-2 py-1 rounded">{{ session.session_id }}</code></p>
+            <p class="mt-2">Completed on: {{ session.completed_at|date:"M d, Y H:i" }}</p>
+            {% if session.duration_seconds %}
+            <p class="mt-1">Duration: {{ session.duration_seconds }} seconds</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+

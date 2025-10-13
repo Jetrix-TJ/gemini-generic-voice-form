@@ -1,158 +1,222 @@
-# 🚀 QUICK START GUIDE
+# Quick Start Guide
 
-## What Is This System?
+Get VoiceGen up and running in 5 minutes!
 
-This is a **Form Builder with Voice Support** - like Google Forms, but users can fill forms by talking!
+## Prerequisites
 
----
+- Python 3.8 or higher
+- Redis server (for WebSocket support)
+- Google Gemini API key
 
-## 🎯 5-Minute Setup
+## Step 1: Install Dependencies
 
-### Step 1: Start the Server
+```bash
+# Clone the repository
+git clone https://github.com/your-org/voicegen.git
+cd voicegen
 
-```powershell
-# In your terminal:
-cd C:\Users\harkr\OneDrive\Desktop\techj\voicegen
-.\venv\Scripts\activate
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install requirements
+pip install -r requirements.txt
+```
+
+## Step 2: Configure Environment
+
+Create a `.env` file:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+REDIS_URL=redis://localhost:6379/0
+```
+
+Get your Gemini API key: https://makersuite.google.com/app/apikey
+
+## Step 3: Initialize Database
+
+```bash
+python manage.py migrate
+```
+
+## Step 4: Create API Key
+
+```bash
+python manage.py shell
+```
+
+In the Python shell:
+
+```python
+from voice_flow.models import APIKey
+api_key = APIKey.objects.create(name="Development Key")
+print(f"Your API Key: {api_key.key}")
+exit()
+```
+
+**Save this API key** - you'll need it for API calls!
+
+## Step 5: Start Redis
+
+### macOS (with Homebrew):
+```bash
+brew services start redis
+```
+
+### Linux:
+```bash
+sudo systemctl start redis
+```
+
+### Windows:
+Download from https://redis.io/download or use Docker:
+```bash
+docker run -d -p 6379:6379 redis:alpine
+```
+
+## Step 6: Start the Server
+
+```bash
+daphne voicegen.asgi:application --port 8000
+```
+
+Or use the Django development server (for testing only):
+```bash
 python manage.py runserver
 ```
 
-Server will start at: **http://localhost:8000**
+## Step 7: Test the Installation
 
----
+Open your browser and visit:
+- http://localhost:8000/ - Home page
+- http://localhost:8000/health/ - Health check
 
-### Step 2: Create Your First Form
+## Step 8: Create Your First Form
 
-1. **Open browser**: http://localhost:8000/config/forms/
-2. **Click on a template** (e.g., "Contact Form")
-3. **Fill in**:
-   - Form Name: `My Test Form`
-   - Callback URL: Get one from https://webhook.site/
-   - (Leave other fields as default)
-4. **Click "Create Form"**
+Using the Python SDK:
 
----
+```python
+from voiceforms import VoiceFormSDK
+from voiceforms.client import create_text_field, create_number_field
 
-### Step 3: Get Your Magic Link
+sdk = VoiceFormSDK(api_key='YOUR_API_KEY_HERE')
 
-After creating the form, you'll see a page with a **Magic Link** like:
+form = sdk.create_form({
+    'name': 'Quick Survey',
+    'fields': [
+        create_text_field('name', 'What is your name?'),
+        create_number_field(
+            'rating',
+            'On a scale of 1-10, how would you rate this service?',
+            min_value=1,
+            max_value=10
+        )
+    ],
+    'ai_prompt': 'Hello! This is a quick 2-question survey.',
+    'callback_url': 'https://webhook.site/unique-url'  # Use webhook.site for testing
+})
+
+print(f"Form ID: {form['form_id']}")
+print(f"Magic Link: {form['magic_link']}")
+
+# Generate a session
+session = sdk.generate_session_link(form['form_id'])
+print(f"Session Link: {session['magic_link']}")
 ```
-http://localhost:8000/voice/magic/abc123-def456.../
+
+Or using curl:
+
+```bash
+curl -X POST http://localhost:8000/api/forms/ \
+  -H "X-API-Key: YOUR_API_KEY_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Quick Survey",
+    "fields": [
+      {
+        "name": "name",
+        "type": "text",
+        "required": true,
+        "prompt": "What is your name?"
+      }
+    ],
+    "ai_prompt": "Hello! Let'\''s get started.",
+    "callback_url": "https://webhook.site/unique-url"
+  }'
 ```
 
-**This is the link you share with users!**
+## Step 9: Test the Voice Interface
 
----
+1. Copy the magic link from the response
+2. Open it in your browser
+3. Click the microphone button or type your responses
+4. Complete the form
 
-### Step 4: Test It
+## Step 10: View Webhook Data
 
-1. Open the magic link in a new tab
-2. Click "Start Recording" OR type in text box
-3. Fill out the form
-4. Check https://webhook.site/ to see the data arrive!
+Visit https://webhook.site to see the webhook payload delivered to your test endpoint!
 
----
+## Using Docker (Alternative)
 
-## 📁 Page Structure Explained
+If you prefer Docker:
 
-| URL | Who Uses It | Purpose |
-|-----|-------------|---------|
-| `/` | Everyone | Landing page |
-| `/config/` | **YOU** (Admin) | Dashboard to manage forms |
-| `/config/forms/` | **YOU** (Admin) | Create new forms |
-| `/voice/magic/xxx/` | **YOUR USERS** | Fill out forms (the link you share) |
+```bash
+# Create .env file with your settings
+cp .env.example .env
+# Edit .env with your Gemini API key
 
----
+# Start all services
+docker-compose up --build
 
-## 🎤 How Voice Works
+# In another terminal, create an API key
+docker-compose exec web python manage.py shell
+# Then follow Step 4
+```
 
-When users open your magic link:
-1. They click "Start Recording"
-2. AI asks questions based on your form
-3. Users answer naturally by voice
-4. Form gets filled automatically
-5. Data sent to your webhook when done
+## Troubleshooting
 
----
+### Redis Connection Error
+**Error**: `Connection refused` or `Error 111`
+**Solution**: Make sure Redis is running:
+```bash
+redis-cli ping
+# Should return: PONG
+```
 
-## 💡 Real Use Cases
+### WebSocket Connection Failed
+**Error**: WebSocket connection fails
+**Solution**: 
+- Make sure you're using `daphne` instead of `runserver`
+- Check that Redis is running
 
-### Example 1: Customer Feedback
-- YOU create a "Customer Survey" form at `/config/forms/`
-- Get magic link: `http://yoursite.com/voice/magic/abc123/`
-- Email this link to customers
-- They fill it by voice
-- You get data at your webhook
+### Gemini API Error
+**Error**: `Invalid API key`
+**Solution**: 
+- Verify your API key is correct
+- Make sure it's set in the `.env` file
+- Restart the server after updating `.env`
 
-### Example 2: Patient Intake
-- Create "Patient Intake" form
-- Put magic link on your website
-- Patients fill it before appointment
-- Data goes to your EHR system webhook
+### Migration Error
+**Error**: `Table already exists`
+**Solution**:
+```bash
+rm db.sqlite3
+python manage.py migrate
+```
 
-### Example 3: Job Applications
-- Create "Job Application" form
-- Share link in job posting
-- Candidates fill via voice or text
-- Applications sent to your HR system
+## Next Steps
 
----
+- Read the [full documentation](README.md)
+- Explore [API examples](docs/API_EXAMPLES.md)
+- Check out [SDK examples](sdk/python/README.md)
+- Learn about [webhook integration](docs/WEBHOOKS.md)
 
-## 🔧 Troubleshooting
+## Need Help?
 
-### "Page Not Found"
-- Make sure server is running: `python manage.py runserver`
-
-### "CSRF Error"
-- Clear browser cookies
-- Use `localhost:8000` (not `127.0.0.1`)
-
-### "WebSocket Error"
-- Restart the server
-- Check that Django Channels is installed: `pip list | findstr channels`
-
-### "No data at webhook"
-- Make sure you entered webhook URL when creating form
-- Test webhook at https://webhook.site/ first
-
----
-
-## 📊 Dashboard Overview
-
-Go to **http://localhost:8000/config/** to see:
-- All your forms
-- Active sessions (users currently filling forms)
-- Completed sessions
-- Analytics
-
----
-
-## ✨ Pro Tips
-
-1. **Test First**: Always test your magic link before sharing
-2. **Webhook.site**: Use it to test webhooks before setting up your real endpoint
-3. **Expiry Time**: Set link expiry based on use case (24h default)
-4. **AI Instructions**: Customize how the AI talks to users in form settings
-5. **Multiple Forms**: Create different forms for different purposes!
-
----
-
-## 🆘 Need Help?
-
-1. Check server logs in terminal
-2. Look at browser console (F12)
-3. Test with simple "Contact Form" template first
-4. Make sure `.env` file has GEMINI_API_KEY set
-
----
-
-## 🎉 You're Ready!
-
-Now you know:
-- ✅ How to create forms (at `/config/forms/`)
-- ✅ How to get magic links (after creating form)
-- ✅ How users fill forms (via the magic link)
-- ✅ How data flows (to your webhook)
-
-Go create your first form! 🚀
+- 📧 Email: support@voicegen.ai
+- 💬 Discord: [Join our community](https://discord.gg/voicegen)
+- 🐛 Issues: [GitHub Issues](https://github.com/your-org/voicegen/issues)
 

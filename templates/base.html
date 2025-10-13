@@ -3,131 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Voice-Powered Forms{% endblock %}</title>
-    
-    <!-- Tailwind CSS -->
+    <title>{% block title %}AI Voice Form Service{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Custom CSS -->
     <style>
-        .status-indicator {
-            @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+        @keyframes pulse-ring {
+            0% {
+                transform: scale(0.95);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 0.7;
+            }
+            100% {
+                transform: scale(0.95);
+                opacity: 1;
+            }
         }
-        .status-indicator.connected {
-            @apply bg-green-100 text-green-800;
+        .pulse-ring {
+            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-        .status-indicator.disconnected {
-            @apply bg-red-100 text-red-800;
+        .recording {
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-        .status-indicator.connecting {
-            @apply bg-yellow-100 text-yellow-800;
-        }
-        
-        .recording-button.recording {
-            @apply bg-red-600 hover:bg-red-700;
-            animation: pulse 2s infinite;
-        }
-        
-        .message {
-            @apply mb-4 p-4 rounded-lg;
-        }
-        .message.user {
-            @apply bg-blue-50 border-l-4 border-blue-400 ml-8;
-        }
-        .message.assistant {
-            @apply bg-gray-50 border-l-4 border-gray-400 mr-8;
-        }
-        
-        .checklist-section {
-            @apply mb-6 p-4 border rounded-lg;
-        }
-        .checklist-section.completed {
-            @apply bg-green-50 border-green-200;
-        }
-        .checklist-section.in_progress {
-            @apply bg-yellow-50 border-yellow-200;
-        }
-        .checklist-section.pending {
-            @apply bg-gray-50 border-gray-200;
-        }
-        
-        .field-saved-notification {
-            @apply fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg transform translate-x-full transition-transform duration-300 z-50;
-        }
-        .field-saved-notification.show {
-            @apply translate-x-0;
-        }
-        
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        
-        .section-progress-bar {
-            @apply h-2 bg-blue-500 rounded-full transition-all duration-300;
-        }
-        
-        .field-item {
-            @apply flex justify-between items-center py-1 px-2 rounded;
-        }
-        .field-item.completed {
-            @apply bg-green-100 text-green-800;
-        }
-        .field-item.pending {
-            @apply bg-gray-100 text-gray-600;
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
         }
     </style>
-    
-    {% block extra_css %}{% endblock %}
+    {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <!-- Navigation -->
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
     <nav class="bg-white shadow-lg">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <h1 class="text-xl font-bold text-gray-900">
-                            {% block nav_title %}Voice Forms{% endblock %}
-                        </h1>
-                    </div>
+                    <h1 class="text-2xl font-bold text-indigo-600">🗣️ VoiceGen</h1>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <a href="{% url 'home' %}" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                        Home
-                    </a>
-                    <a href="{% url 'config_dashboard' %}" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md text-sm font-medium">
-                        Form Dashboard
-                    </a>
+                    <a href="/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Home</a>
+                    <a href="/api/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">API</a>
                 </div>
             </div>
         </div>
     </nav>
-    
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {% if messages %}
-            <div class="mb-6">
-                {% for message in messages %}
-                    <div class="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded">
-                        {{ message }}
-                    </div>
-                {% endfor %}
-            </div>
-        {% endif %}
-        
+
+    <main>
         {% block content %}{% endblock %}
     </main>
-    
-    <!-- Footer -->
-    <footer class="bg-white border-t mt-12">
-        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <div class="text-center text-gray-600">
-                <p>&copy; 2024 Voice-Powered Forms System. Built with Django and Google Gemini.</p>
-            </div>
+
+    <footer class="bg-white mt-12 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <p class="text-center text-gray-500 text-sm">
+                © 2024 VoiceGen - AI Voice Form Service | Powered by Google Gemini
+            </p>
         </div>
     </footer>
-    
-    {% block extra_js %}{% endblock %}
+
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>
+

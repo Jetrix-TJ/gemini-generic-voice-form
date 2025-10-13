@@ -1,140 +1,156 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
-{% block title %}Home - Voice Forms{% endblock %}
+{% block title %}VoiceGen - AI Voice Form Service{% endblock %}
 
 {% block content %}
-<div class="px-4 py-6 sm:px-0">
-    <div class="border-4 border-dashed border-gray-200 rounded-lg p-8">
-        <!-- Hero Section -->
-        <div class="text-center mb-12">
-            <h1 class="text-4xl font-bold text-gray-900 mb-4">
-                Voice-Powered Forms
-            </h1>
-            <p class="text-xl text-gray-600 mb-8">
-                Create and manage dynamic forms with AI-powered voice interactions using Google Gemini 2.5 Flash
-            </p>
-            <a href="{% url 'config_dashboard' %}" 
-               class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors">
-                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
-                </svg>
-                Go to Form Dashboard
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Hero Section -->
+    <div class="text-center mb-16">
+        <h1 class="text-5xl font-bold text-gray-900 mb-4">
+            AI Voice Form Service
+        </h1>
+        <p class="text-xl text-gray-600 mb-8">
+            Transform data collection with natural voice conversations powered by AI
+        </p>
+        <div class="flex justify-center space-x-4">
+            <a href="#features" class="bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition">
+                Learn More
+            </a>
+            <a href="/api/" class="bg-white text-indigo-600 px-8 py-3 rounded-lg font-semibold border-2 border-indigo-600 hover:bg-indigo-50 transition">
+                API Documentation
             </a>
         </div>
-        
-        <!-- Features Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-            <div class="text-center">
-                <div class="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-8 h-8 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"></path>
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-gray-900 mb-2">Real-time Voice Processing</h3>
-                <p class="text-gray-600">Advanced audio processing with Google Gemini 2.5 Flash for natural conversation flow.</p>
+    </div>
+
+    <!-- Features Section -->
+    <div id="features" class="mb-16">
+        <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">Core Features</h2>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">🗣️</div>
+                <h3 class="text-xl font-bold mb-2">Natural Voice Conversations</h3>
+                <p class="text-gray-600">AI-powered voice interactions using Google Gemini 2.5 Flash for seamless data collection</p>
             </div>
-            
-            <div class="text-center">
-                <div class="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-gray-900 mb-2">Dynamic Form Completion</h3>
-                <p class="text-gray-600">Intelligent form population with real-time validation and progress tracking.</p>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">⚡</div>
+                <h3 class="text-xl font-bold mb-2">Real-time Processing</h3>
+                <p class="text-gray-600">WebSocket-based live audio streaming and processing for instant feedback</p>
             </div>
-            
-            <div class="text-center">
-                <div class="bg-purple-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm8 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V8z" clip-rule="evenodd"></path>
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-gray-900 mb-2">Comprehensive Data Collection</h3>
-                <p class="text-gray-600">Complete form information with intelligent data capture and validation.</p>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">🔗</div>
+                <h3 class="text-xl font-bold mb-2">Magic Link Generation</h3>
+                <p class="text-gray-600">Create unique, shareable form sessions with custom expiration times</p>
             </div>
-        </div>
-        
-        <!-- System Information -->
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-4">System Features</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900 mb-3">Technical Capabilities</h3>
-                    <ul class="space-y-2 text-gray-600">
-                        <li class="flex items-center">
-                            <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
-                            </svg>
-                            WebSocket real-time communication
-                        </li>
-                        <li class="flex items-center">
-                            <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
-                            </svg>
-                            Google Gemini 2.5 Flash integration
-                        </li>
-                        <li class="flex items-center">
-                            <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
-                            </svg>
-                            Native audio dialog processing
-                        </li>
-                        <li class="flex items-center">
-                            <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
-                            </svg>
-                            File upload support
-                        </li>
-                    </ul>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900 mb-3">Form Capabilities</h3>
-                    <ul class="space-y-2 text-gray-600">
-                        <li class="flex items-center">
-                            <svg class="w-4 h-4 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
-                            </svg>
-                            Dynamic form configuration
-                        </li>
-                        <li class="flex items-center">
-                            <svg class="w-4 h-4 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
-                            </svg>
-                            Custom AI instructions
-                        </li>
-                        <li class="flex items-center">
-                            <svg class="w-4 h-4 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
-                            </svg>
-                            Magic link access
-                        </li>
-                        <li class="flex items-center">
-                            <svg class="w-4 h-4 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
-                            </svg>
-                            Webhook callbacks
-                        </li>
-                    </ul>
-                </div>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">📡</div>
+                <h3 class="text-xl font-bold mb-2">Webhook Callbacks</h3>
+                <p class="text-gray-600">Receive structured data at your specified endpoints with automatic retries</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">🎯</div>
+                <h3 class="text-xl font-bold mb-2">Zero Storage</h3>
+                <p class="text-gray-600">No data persistence - everything flows through to your systems securely</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">📱</div>
+                <h3 class="text-xl font-bold mb-2">Mobile Optimized</h3>
+                <p class="text-gray-600">Responsive design works perfectly on all devices and screen sizes</p>
             </div>
         </div>
-        
-        <!-- Getting Started -->
-        <div class="mt-8 bg-blue-50 rounded-lg p-6">
-            <h3 class="text-lg font-semibold text-blue-900 mb-2">Getting Started</h3>
-            <p class="text-blue-800 mb-4">
-                The voice-powered form system is ready to use. Create your first form, generate a magic link, and share it with your users!
-            </p>
-            <div class="text-sm text-blue-700">
-                <ol class="list-decimal list-inside space-y-1">
-                    <li>Go to the Form Dashboard</li>
-                    <li>Click "Create Form" and select a template</li>
-                    <li>Generate a magic link</li>
-                    <li>Share the link with users to fill forms via voice or text</li>
-                </ol>
+    </div>
+
+    <!-- Quick Start Section -->
+    <div class="bg-white rounded-lg shadow-lg p-8 mb-16">
+        <h2 class="text-3xl font-bold text-gray-900 mb-6">Quick Start</h2>
+        <div class="space-y-6">
+            <div>
+                <h3 class="text-xl font-bold mb-2">1. Create a Form</h3>
+                <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto"><code>curl -X POST http://localhost:8000/api/forms/ \
+  -H "X-API-Key: your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Customer Feedback",
+    "fields": [
+      {
+        "name": "customer_name",
+        "type": "text",
+        "required": true,
+        "prompt": "What'\''s your name?"
+      }
+    ],
+    "callback_url": "https://your-app.com/webhook"
+  }'</code></pre>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold mb-2">2. Generate a Magic Link</h3>
+                <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto"><code>curl -X POST http://localhost:8000/api/forms/{form_id}/generate-link/ \
+  -H "X-API-Key: your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_data": {"user_id": "123"},
+    "expires_in_hours": 24
+  }'</code></pre>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold mb-2">3. Share the Link</h3>
+                <p class="text-gray-600">Send the magic link to your users. They can complete the form using voice on any device!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Developer Experience -->
+    <div class="mb-16">
+        <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">Developer Experience</h2>
+        <div class="grid md:grid-cols-2 gap-8">
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">🚀</div>
+                <h3 class="text-xl font-bold mb-2">RESTful API</h3>
+                <p class="text-gray-600">Clean, intuitive API for form creation and management with comprehensive documentation</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">📚</div>
+                <h3 class="text-xl font-bold mb-2">SDK Support</h3>
+                <p class="text-gray-600">Python SDK included with more languages coming soon</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">🔐</div>
+                <h3 class="text-xl font-bold mb-2">Secure Authentication</h3>
+                <p class="text-gray-600">API key-based authentication with webhook signature verification</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="text-4xl mb-4">📊</div>
+                <h3 class="text-xl font-bold mb-2">Session Analytics</h3>
+                <p class="text-gray-600">Track completion rates, duration, and success metrics for your forms</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Architecture -->
+    <div class="bg-white rounded-lg shadow-lg p-8">
+        <h2 class="text-3xl font-bold text-gray-900 mb-6">Technology Stack</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+            <div>
+                <h3 class="text-lg font-bold mb-3">Backend</h3>
+                <ul class="space-y-2 text-gray-600">
+                    <li>✓ Django 5.0+ - Web framework</li>
+                    <li>✓ Django Channels - WebSocket support</li>
+                    <li>✓ Google Gemini 2.5 Flash - AI processing</li>
+                    <li>✓ PostgreSQL/SQLite - Database</li>
+                    <li>✓ Redis - Channel layer & caching</li>
+                    <li>✓ Celery - Background tasks</li>
+                </ul>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold mb-3">Frontend</h3>
+                <ul class="space-y-2 text-gray-600">
+                    <li>✓ Vanilla JavaScript - No dependencies</li>
+                    <li>✓ Web Audio API - Audio capture</li>
+                    <li>✓ WebSocket API - Real-time communication</li>
+                    <li>✓ Tailwind CSS - Responsive styling</li>
+                </ul>
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
+

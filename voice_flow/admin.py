@@ -1,120 +1,80 @@
+"""
+Admin configuration for Voice Flow models
+"""
 from django.contrib import admin
-
-from .models import (
-    DynamicFormData,
-    FormConfiguration,
-    FormSubmission,
-    MagicLinkSession,
-)
+from .models import APIKey, VoiceFormConfig, MagicLinkSession, WebhookLog
 
 
-@admin.register(FormConfiguration)
-class FormConfigurationAdmin(admin.ModelAdmin):
-    list_display = ["name", "is_active", "created_at", "magic_link_enabled"]
-    list_filter = ["is_active", "magic_link_enabled", "created_at"]
-    search_fields = ["name", "description"]
-    readonly_fields = ["id", "created_at", "updated_at"]
+@admin.register(APIKey)
+class APIKeyAdmin(admin.ModelAdmin):
+    list_display = ['name', 'key_preview', 'user', 'created_at', 'last_used_at', 'is_active']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['name', 'key', 'user__username']
+    readonly_fields = ['key', 'created_at', 'last_used_at']
+    
+    def key_preview(self, obj):
+        return f"{obj.key[:15]}..."
+    key_preview.short_description = 'API Key'
+
+
+@admin.register(VoiceFormConfig)
+class VoiceFormConfigAdmin(admin.ModelAdmin):
+    list_display = ['form_id', 'name', 'api_key', 'created_at', 'is_active']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['form_id', 'name', 'description']
+    readonly_fields = ['form_id', 'webhook_secret', 'created_at', 'updated_at']
     fieldsets = (
-        (
-            "Basic Information",
-            {"fields": ("name", "description", "is_active")},
-        ),
-        (
-            "Form Schema",
-            {"fields": ("form_schema",), "classes": ("collapse",)},
-        ),
-        (
-            "Magic Link Settings",
-            {"fields": ("magic_link_enabled", "magic_link_expiry_hours")},
-        ),
-        (
-            "Callback Configuration",
-            {
-                "fields": (
-                    "callback_url",
-                    "callback_headers",
-                    "callback_secret",
-                )
-            },
-        ),
-        (
-            "AI Configuration",
-            {"fields": ("ai_instructions", "ai_voice_name", "ai_language")},
-        ),
-        (
-            "System Information",
-            {
-                "fields": ("id", "created_at", "updated_at"),
-                "classes": ("collapse",),
-            },
-        ),
+        ('Basic Information', {
+            'fields': ('form_id', 'api_key', 'name', 'description', 'is_active')
+        }),
+        ('Form Configuration', {
+            'fields': ('fields', 'ai_prompt', 'settings')
+        }),
+        ('Callback Configuration', {
+            'fields': ('callback_url', 'callback_method', 'webhook_secret')
+        }),
+        ('Messages', {
+            'fields': ('success_message', 'error_message')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
     )
 
 
 @admin.register(MagicLinkSession)
 class MagicLinkSessionAdmin(admin.ModelAdmin):
-    list_display = [
-        "magic_link_id",
-        "form_config",
-        "completion_status",
-        "created_at",
-        "expires_at",
+    list_display = ['session_id', 'form_config', 'status', 'created_at', 'completed_at', 'webhook_sent']
+    list_filter = ['status', 'webhook_sent', 'created_at']
+    search_fields = ['session_id', 'form_config__name']
+    readonly_fields = [
+        'session_id', 'created_at', 'started_at', 'completed_at',
+        'duration_seconds', 'total_interactions', 'webhook_sent_at'
     ]
-    list_filter = ["completion_status", "created_at", "expires_at"]
-    search_fields = ["magic_link_id", "form_config__name"]
-    readonly_fields = ["id", "created_at", "last_activity", "expires_at"]
     fieldsets = (
-        (
-            "Session Information",
-            {"fields": ("form_config", "magic_link_id", "completion_status")},
-        ),
-        (
-            "Session Data",
-            {
-                "fields": ("session_data", "current_step"),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Conversation History",
-            {"fields": ("conversation_history",), "classes": ("collapse",)},
-        ),
-        (
-            "Timestamps",
-            {
-                "fields": (
-                    "created_at",
-                    "last_activity",
-                    "expires_at",
-                    "completed_at",
-                )
-            },
-        ),
+        ('Basic Information', {
+            'fields': ('session_id', 'form_config', 'status')
+        }),
+        ('Session Data', {
+            'fields': ('session_data', 'collected_data', 'conversation_history')
+        }),
+        ('Timing', {
+            'fields': ('created_at', 'expires_at', 'started_at', 'completed_at', 'duration_seconds')
+        }),
+        ('Metrics', {
+            'fields': ('fields_completed', 'total_interactions', 'retry_count')
+        }),
+        ('Webhook', {
+            'fields': ('webhook_sent', 'webhook_response_code', 'webhook_sent_at')
+        }),
     )
 
 
-@admin.register(DynamicFormData)
-class DynamicFormDataAdmin(admin.ModelAdmin):
-    list_display = [
-        "session",
-        "field_name",
-        "field_value",
-        "field_type",
-        "collected_at",
-    ]
-    list_filter = ["field_type", "collected_at"]
-    search_fields = ["session__magic_link_id", "field_name", "field_value"]
-    readonly_fields = ["id", "collected_at"]
+@admin.register(WebhookLog)
+class WebhookLogAdmin(admin.ModelAdmin):
+    list_display = ['session', 'method', 'url', 'status_code', 'is_success', 'attempt_number', 'created_at']
+    list_filter = ['is_success', 'method', 'created_at']
+    search_fields = ['session__session_id', 'url']
+    readonly_fields = ['created_at', 'response_time_ms']
 
-
-@admin.register(FormSubmission)
-class FormSubmissionAdmin(admin.ModelAdmin):
-    list_display = [
-        "session",
-        "submission_timestamp",
-        "callback_delivered",
-        "callback_attempts",
-    ]
-    list_filter = ["callback_delivered", "submission_timestamp"]
-    search_fields = ["session__magic_link_id", "session__form_config__name"]
-    readonly_fields = ["id", "submission_timestamp"]
