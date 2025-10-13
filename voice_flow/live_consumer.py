@@ -140,11 +140,16 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
             # Build system instruction
             system_instruction = self.build_system_instruction()
             
-            # Config
+            # Config - Enable transcription to get text alongside audio
             config = {
                 "system_instruction": system_instruction,
                 "response_modalities": ["AUDIO"],
-                "proactivity": {'proactive_audio': True}
+                "proactivity": {'proactive_audio': True},
+                "speech_config": {
+                    "voice_config": {
+                        "prebuilt_voice_config": {"voice_name": "Aoede"}
+                    }
+                }
             }
             
             model = "gemini-2.5-flash-native-audio-preview-09-2025"
@@ -212,19 +217,48 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                         self.audio_in_queue.put_nowait(data)
                         continue
                     
+                    # Debug: Log the entire response structure
+                    logger.info(f"Response type: {type(response)}")
+                    logger.info(f"Response attributes: {dir(response)}")
+                    
                     # Check response.text first
                     text_content = None
                     if text := response.text:
                         text_content = text
+                        logger.info(f"Found text in response.text: {text_content}")
+                    
                     # Check server_content as fallback (Gemini sends text here!)
-                    elif hasattr(response, 'server_content') and response.server_content:
+                    if hasattr(response, 'server_content') and response.server_content:
                         sc = response.server_content
-                        # Extract text from server_content
-                        if hasattr(sc, 'model_turn') and sc.model_turn:
-                            for part in sc.model_turn.parts:
-                                if hasattr(part, 'text') and part.text:
-                                    text_content = part.text
-                                    break
+                        logger.info(f"server_content type: {type(sc)}")
+                        
+                        # Check turn_complete status
+                        if hasattr(sc, 'turn_complete'):
+                            logger.info(f"turn_complete: {sc.turn_complete}")
+                        
+                        # Try model_turn
+                        if hasattr(sc, 'model_turn'):
+                            mt = sc.model_turn
+                            logger.info(f"model_turn: {mt} (type: {type(mt)})")
+                            
+                            if mt and hasattr(mt, 'parts'):
+                                logger.info(f"model_turn.parts: {len(mt.parts)} parts")
+                                for i, part in enumerate(mt.parts):
+                                    logger.info(f"Part {i}: {type(part)}")
+                                    # Try to get text from part
+                                    if hasattr(part, 'text'):
+                                        text_content = part.text
+                                        logger.info(f"✅ FOUND TEXT: {text_content}")
+                                        break
+                                    elif hasattr(part, 'inline_data'):
+                                        logger.info(f"Part {i} has inline_data (audio)")
+                        
+                        # Try output_transcription as alternative
+                        if not text_content and hasattr(sc, 'output_transcription'):
+                            ot = sc.output_transcription
+                            logger.info(f"output_transcription: {ot}")
+                            if ot:
+                                text_content = ot
                     
                     if text_content:
                         # Log and send transcript
