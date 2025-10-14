@@ -12,6 +12,7 @@ from django.conf import settings
 from django.utils import timezone
 from .models import MagicLinkSession
 from .tasks import send_webhook
+from .ai_service import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -140,11 +141,37 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
             # Build system instruction
             system_instruction = self.build_system_instruction()
             
+            # Define tool functions for structured extraction (no transcription required)
+            tools = [
+                {
+                    "function_declarations": [
+                        {
+                            "name": "save_field",
+                            "description": "Save the user's answer for a specific form field.",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "field_name": {"type": "string"},
+                                    "value": {}
+                                },
+                                "required": ["field_name", "value"]
+                            }
+                        },
+                        {
+                            "name": "complete_form",
+                            "description": "Mark the form as completed when all required fields are captured.",
+                            "parameters": {"type": "object", "properties": {}}
+                        }
+                    ]
+                }
+            ]
+            
             # Config - Enable transcription to get text alongside audio
             config = {
                 "system_instruction": system_instruction,
                 "response_modalities": ["AUDIO"],
                 "proactivity": {'proactive_audio': True},
+                "tools": tools,
                 "speech_config": {
                     "voice_config": {
                         "prebuilt_voice_config": {"voice_name": "Aoede"}
@@ -221,7 +248,7 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                     logger.info(f"Response type: {type(response)}")
                     logger.info(f"Response attributes: {dir(response)}")
                     
-                    # Check response.text first
+                    # Check response.text first (may be absent in audio-only mode)
                     text_content = None
                     if text := response.text:
                         text_content = text
@@ -275,6 +302,30 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                         if self.is_survey_complete(text_content):
                             logger.info(f"Survey completion detected in text: {text_content}")
                             await self.handle_completion()
+
+                    # Handle tool calls (structured extraction without transcripts)
+                    try:
+                        tool_call = getattr(response, 'tool_call', None)
+                        if tool_call:
+                            name = getattr(tool_call, 'name', None) or getattr(tool_call, 'function', None)
+                            args = getattr(tool_call, 'args', None) or getattr(tool_call, 'parameters', None) or {}
+                            logger.info(f"Tool call received: {name} args={args}")
+                            if name == 'save_field' and isinstance(args, dict):
+                                field_name = args.get('field_name')
+                                value = args.get('value')
+                                if field_name:
+                                    self.collected_data[field_name] = value
+                                    # Update progress to client (best-effort)
+                                    await self.send(text_data=json.dumps({
+                                        'type': 'progress',
+                                        'current_field': len([v for v in self.collected_data.values() if v is not None]),
+                                        'total_fields': self.form_config.get('total_fields', 0),
+                                        'percentage': int(100 * len([v for v in self.collected_data.values() if v is not None]) / max(self.form_config.get('total_fields', 1), 1))
+                                    }))
+                            elif name == 'complete_form':
+                                await self.handle_completion()
+                    except Exception as e:
+                        logger.error(f"Error handling tool call: {e}")
                 
                 logger.debug("Turn complete")
                 
@@ -322,6 +373,13 @@ Then WAIT for the answer. When you get an answer, say "Got it" and ask the next 
 Keep all responses under 10 words. Do NOT chat - ONLY ask the form questions.
 
 After ALL questions, say EXACTLY: "Thank you! Survey complete."
+
+TOOL USAGE (CRITICAL):
+- After the user answers a question, immediately call the function save_field with JSON parameters:
+  {{"field_name": "<exact field name from above>", "value": <parsed value>}}.
+- Use the correct data type: numbers as numbers, booleans as true/false.
+- When ALL REQUIRED fields have been saved via save_field, call the function complete_form with empty parameters.
+- Continue speaking the short confirmation aloud, but ALWAYS issue the appropriate tool call(s) so the system stores data.
 """
     
     def is_survey_complete(self, text):
@@ -348,6 +406,28 @@ After ALL questions, say EXACTLY: "Thank you! Survey complete."
             # Save conversation history as collected data
             await self.save_conversation()
             
+            # Extract structured fields + summary via Gemini (Option B)
+            extraction = ai_service.extract_structured_from_conversation(
+                self.form_config.get('fields', []),
+                self.conversation_history
+            )
+            summary = extraction.get('summary_text')
+            extracted_fields = extraction.get('fields') or {}
+
+            # Fallbacks if extraction returns little/none
+            if not extracted_fields and self.collected_data:
+                extracted_fields = dict(self.collected_data)
+            if not summary:
+                if extracted_fields:
+                    # Build a compact "k: v; ..." summary
+                    try:
+                        pairs = [f"{k}: {extracted_fields.get(k)}" for k in extracted_fields.keys()]
+                        summary = "; ".join(pairs)
+                    except Exception:
+                        summary = ai_service.summarize_conversation(self.conversation_history)
+                else:
+                    summary = ai_service.summarize_conversation(self.conversation_history)
+            
             # Mark session as completed
             await self.mark_session_completed()
             
@@ -355,7 +435,10 @@ After ALL questions, say EXACTLY: "Thank you! Survey complete."
             await self.send(text_data=json.dumps({
                 'type': 'completed',
                 'message': self.form_config.get('success_message', 'Thank you! Survey completed.'),
-                'conversation': self.conversation_history
+                'conversation': self.conversation_history,
+                'summary': summary,
+                'extracted_fields': extracted_fields,
+                'confidence': extraction.get('confidence', 0)
             }))
             
             # Trigger webhook

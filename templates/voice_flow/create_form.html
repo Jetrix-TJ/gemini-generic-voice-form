@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Create Voice Form - VoiceGen{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <h1 class="text-3xl font-bold text-gray-900 mb-6">Create a Voice Form</h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left: Form details and fields -->
+        <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow">
+            <div class="mb-4 p-3 border rounded bg-gray-50">
+                <div class="flex flex-col md:flex-row md:items-end md:space-x-3 space-y-2 md:space-y-0">
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium text-gray-700">X-API-Key</label>
+                        <input id="api-key" type="text" class="mt-1 w-full border rounded px-3 py-2" placeholder="Paste your API key" />
+                    </div>
+                    <div class="flex space-x-2">
+                        <button id="btn-validate-key" class="border px-3 py-2 rounded">Validate Key</button>
+                        <button id="btn-create-dev-key" class="border px-3 py-2 rounded">Create Dev API Key</button>
+                    </div>
+                </div>
+                <p id="api-key-status" class="text-sm mt-2 text-gray-600"></p>
+            </div>
+            <h2 class="text-xl font-semibold mb-4">Form Details</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Form Name</label>
+                    <input id="form-name" type="text" class="mt-1 w-full border rounded px-3 py-2" placeholder="Customer Feedback" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Description</label>
+                    <textarea id="form-description" class="mt-1 w-full border rounded px-3 py-2" rows="2" placeholder="Collect customer feedback"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Initial AI Greeting</label>
+                    <input id="ai-prompt" type="text" class="mt-1 w-full border rounded px-3 py-2" placeholder="Hello! I'd love to get your feedback." />
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Callback URL</label>
+                        <input id="callback-url" type="url" class="mt-1 w-full border rounded px-3 py-2" placeholder="https://webhook.site/your-id" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Success Message</label>
+                        <input id="success-message" type="text" class="mt-1 w-full border rounded px-3 py-2" placeholder="Thank you for your feedback!" />
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="text-xl font-semibold mt-8 mb-4">Fields</h2>
+            <div id="fields-list" class="space-y-4"></div>
+
+            <div class="mt-4 flex items-center space-x-3">
+                <button id="add-field" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">Add Field</button>
+                <button id="save-form" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Save Form</button>
+                <span id="save-status" class="text-sm text-gray-600"></span>
+            </div>
+        </div>
+
+        <!-- Right: Field types and JSON preview -->
+        <div class="bg-white p-6 rounded-lg shadow space-y-6">
+            <div>
+                <h3 class="text-lg font-semibold mb-2">Field Types</h3>
+                <ul class="list-disc list-inside text-gray-700 space-y-1">
+                    <li><strong>text</strong>: min_length, max_length, pattern</li>
+                    <li><strong>number</strong>: min, max, integer_only</li>
+                    <li><strong>email</strong>: domain_whitelist</li>
+                    <li><strong>phone</strong>: country_code, format</li>
+                    <li><strong>date</strong>: min_date, max_date</li>
+                    <li><strong>boolean</strong></li>
+                    <li><strong>choice</strong>: options</li>
+                    <li><strong>multi_choice</strong>: options, min_choices, max_choices</li>
+                </ul>
+            </div>
+            <div>
+                <h3 class="text-lg font-semibold mb-2">JSON Preview</h3>
+                <pre id="json-preview" class="bg-gray-900 text-gray-100 p-3 rounded text-sm overflow-x-auto">{}</pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Minimal client-side builder for fields and JSON preview
+(function() {
+    const fieldsList = document.getElementById('fields-list');
+    const jsonPreview = document.getElementById('json-preview');
+    const addFieldBtn = document.getElementById('add-field');
+    const saveBtn = document.getElementById('save-form');
+    const saveStatus = document.getElementById('save-status');
+
+    const apiBase = '/api/forms/';
+    const devCreateKeyUrl = '/dev/create-api-key/';
+
+    function newFieldRow() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'border rounded p-4';
+        wrapper.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700">Field Name</label>
+                    <input type="text" class="field-name mt-1 w-full border rounded px-3 py-2" placeholder="customer_name" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Type</label>
+                    <select class="field-type mt-1 w-full border rounded px-3 py-2">
+                        <option value="text">text</option>
+                        <option value="number">number</option>
+                        <option value="email">email</option>
+                        <option value="phone">phone</option>
+                        <option value="date">date</option>
+                        <option value="boolean">boolean</option>
+                        <option value="choice">choice</option>
+                        <option value="multi_choice">multi_choice</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Required</label>
+                    <select class="field-required mt-1 w-full border rounded px-3 py-2">
+                        <option value="true">true</option>
+                        <option value="false">false</option>
+                    </select>
+                </div>
+                <div class="md:col-span-5">
+                    <label class="block text-sm font-medium text-gray-700">Prompt</label>
+                    <input type="text" class="field-prompt mt-1 w-full border rounded px-3 py-2" placeholder="What is your name?" />
+                </div>
+            </div>
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Validation (JSON)</label>
+                    <input type="text" class="field-validation mt-1 w-full border rounded px-3 py-2" placeholder='{"min":1,"max":10} or {"options":["A","B"]}' />
+                </div>
+                <div class="flex items-end justify-between">
+                    <button type="button" class="remove-field text-red-600 hover:underline">Remove</button>
+                </div>
+            </div>
+        `;
+
+        wrapper.querySelector('.remove-field').addEventListener('click', () => {
+            wrapper.remove();
+            renderPreview();
+        });
+
+        ['field-name','field-type','field-required','field-prompt','field-validation'].forEach(cls => {
+            wrapper.querySelector(`.${cls}`).addEventListener('input', renderPreview);
+            wrapper.querySelector(`.${cls}`).addEventListener('change', renderPreview);
+        });
+
+        return wrapper;
+    }
+
+    function collectConfig() {
+        const fields = Array.from(fieldsList.children).map(row => {
+            const name = row.querySelector('.field-name').value.trim();
+            const type = row.querySelector('.field-type').value;
+            const required = row.querySelector('.field-required').value === 'true';
+            const prompt = row.querySelector('.field-prompt').value.trim();
+            const validationRaw = row.querySelector('.field-validation').value.trim();
+            let validation;
+            if (validationRaw) {
+                try { validation = JSON.parse(validationRaw); } catch(e) { validation = undefined; }
+            }
+            const f = { name, type, required, prompt };
+            if (validation && Object.keys(validation).length) f.validation = validation;
+            return f;
+        });
+
+        return {
+            name: document.getElementById('form-name').value.trim(),
+            description: document.getElementById('form-description').value.trim(),
+            fields,
+            ai_prompt: document.getElementById('ai-prompt').value.trim(),
+            callback_url: document.getElementById('callback-url').value.trim(),
+            success_message: document.getElementById('success-message').value.trim()
+        };
+    }
+
+    function renderPreview() {
+        const cfg = collectConfig();
+        jsonPreview.textContent = JSON.stringify(cfg, null, 2);
+    }
+
+    addFieldBtn.addEventListener('click', () => {
+        fieldsList.appendChild(newFieldRow());
+        renderPreview();
+    });
+
+    // Start with one field
+    fieldsList.appendChild(newFieldRow());
+    renderPreview();
+
+    async function saveForm() {
+        saveStatus.textContent = 'Saving...';
+        const cfg = collectConfig();
+        try {
+            const apiKeyInput = document.getElementById('api-key');
+            const apiKey = (apiKeyInput.value || localStorage.getItem('voicegen_api_key') || '').trim();
+            if (!apiKey) {
+                throw new Error('Missing API key. Enter it above.');
+            }
+            localStorage.setItem('voicegen_api_key', apiKey);
+            const res = await fetch(apiBase, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': apiKey || ''
+                },
+                body: JSON.stringify(cfg)
+            });
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            saveStatus.textContent = `✅ Created! Form ID: ${data.form_id}`;
+            if (data.magic_link) {
+                saveStatus.textContent += ` | Magic Link: ${data.magic_link}`;
+            }
+        } catch (e) {
+            console.error(e);
+            saveStatus.textContent = '❌ Failed to save form';
+        }
+    }
+
+    saveBtn.addEventListener('click', saveForm);
+
+    // Prefill API key from local storage
+    const apiKeyInput = document.getElementById('api-key');
+    apiKeyInput.value = localStorage.getItem('voicegen_api_key') || '';
+
+    // Validate Key button
+    document.getElementById('btn-validate-key').addEventListener('click', async () => {
+        const key = apiKeyInput.value.trim();
+        const status = document.getElementById('api-key-status');
+        if (!key) { status.textContent = 'Enter a key first.'; return; }
+        status.textContent = 'Validating...';
+        try {
+            const res = await fetch(apiBase, { headers: { 'X-API-Key': key } });
+            if (res.ok) {
+                localStorage.setItem('voicegen_api_key', key);
+                status.textContent = '✅ Key valid and saved for this browser.';
+            } else {
+                const txt = await res.text();
+                status.textContent = `❌ Invalid: ${txt || res.status}`;
+            }
+        } catch (e) {
+            status.textContent = '❌ Validation failed.';
+        }
+    });
+
+    // Create Dev API Key (works only when DEBUG=True)
+    document.getElementById('btn-create-dev-key').addEventListener('click', async () => {
+        const status = document.getElementById('api-key-status');
+        status.textContent = 'Creating dev key...';
+        try {
+            const res = await fetch(devCreateKeyUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Browser Dev Key' }) });
+            if (!res.ok) {
+                const txt = await res.text();
+                status.textContent = `❌ Not allowed: ${txt || res.status}`;
+                return;
+            }
+            const data = await res.json();
+            apiKeyInput.value = data.key;
+            localStorage.setItem('voicegen_api_key', data.key);
+            status.textContent = '✅ Dev key created and saved.';
+        } catch (e) {
+            status.textContent = '❌ Failed to create dev key.';
+        }
+    });
+})();
+</script>
+{% endblock %}
+
+

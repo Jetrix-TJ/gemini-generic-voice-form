@@ -10,6 +10,7 @@ from celery import shared_task
 from django.utils import timezone
 from django.conf import settings
 import requests
+from .ai_service import ai_service
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,21 @@ def send_webhook(self, session_id: str, attempt_number: int = 1):
                     'total_interactions': session.total_interactions,
                     'retry_count': session.retry_count,
                 }
-            }
+            },
+            'summary': ai_service.summarize_conversation(session.conversation_history)
         }
+
+        # Try Gemini structured extraction for webhook too
+        try:
+            extraction = ai_service.extract_structured_from_conversation(form_config.fields, session.conversation_history)
+            if extraction:
+                payload['extracted_fields'] = extraction.get('fields') or {}
+                # Prefer model-produced summary if available
+                if extraction.get('summary_text'):
+                    payload['summary'] = extraction['summary_text']
+                payload['extraction_confidence'] = extraction.get('confidence', 0)
+        except Exception as e:
+            logger.warning(f"Extraction for webhook failed: {e}")
         
         # Generate signature
         signature = generate_webhook_signature(payload, form_config.webhook_secret)

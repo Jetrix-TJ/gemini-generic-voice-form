@@ -14,6 +14,8 @@ router.register(r'api-keys', views.APIKeyViewSet, basename='apikey')
 urlpatterns = [
     # Public pages
     path('', views.home, name='home'),
+    path('create-form/', views.create_form_page, name='create_form_page'),
+    path('dev/create-api-key/', views.dev_create_api_key, name='dev_create_api_key'),
     path('f/<str:form_id>/', views.form_interface, name='form_interface'),
     path('s/<str:session_id>/', views.session_interface, name='session_interface'),
     

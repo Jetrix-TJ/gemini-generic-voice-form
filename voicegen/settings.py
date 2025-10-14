@@ -163,6 +163,8 @@ VOICE_FORM_SETTINGS = {
     'GEMINI_API_KEY': os.getenv('GEMINI_API_KEY'),
     # Gemini 2.5 Flash Native Audio with Live API (recommended for real-time voice)
     'GEMINI_AUDIO_MODEL': os.getenv('GEMINI_AUDIO_MODEL', 'gemini-2.5-flash-native-audio-preview-09-2025'),
+    # Text model for structured extraction and summaries (must support generateContent)
+    'GEMINI_TEXT_MODEL': os.getenv('GEMINI_TEXT_MODEL', 'gemini-2.0-flash-exp'),
     # Fallback model for text-based interactions
     'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
     'DEFAULT_SESSION_EXPIRY_HOURS': int(os.getenv('DEFAULT_SESSION_EXPIRY_HOURS', 24)),

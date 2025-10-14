@@ -45,10 +45,22 @@ class AIService:
             return
         
         try:
-            # Create client for API access
-            self.client = genai.Client(api_key=self.gemini_api_key)
-            self.model = "text-mode"  # Placeholder - this service is mainly for fallback
-            logger.info(f"Initialized Gemini client (fallback mode)")
+            # Create client for API access (use v1alpha to support experimental models)
+            self.client = genai.Client(api_key=self.gemini_api_key, http_options={"api_version": "v1alpha"})
+            # Select a TEXT model for structured extraction (never use audio preview IDs)
+            configured_text = settings.VOICE_FORM_SETTINGS.get('GEMINI_TEXT_MODEL')
+            configured_generic = settings.VOICE_FORM_SETTINGS.get('GEMINI_MODEL')
+            # Prefer explicit text model; otherwise prefer generic if it doesn't look like an audio model
+            if configured_text:
+                self.text_model_id = configured_text
+            elif configured_generic and 'audio' not in configured_generic.lower():
+                self.text_model_id = configured_generic
+            else:
+                # Safe default text model
+                self.text_model_id = 'gemini-2.0-flash-exp'
+            # Keep a flag; the class' previous 'model' is not required for text calls
+            self.model = None
+            logger.info(f"Initialized Gemini client (text model: {self.text_model_id})")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini client: {e}")
             self.model = None
@@ -236,6 +248,145 @@ class AIService:
         except Exception as e:
             logger.error(f"Error generating AI message: {e}")
             return "Hello! Let's get started with your form."
+
+    def summarize_conversation(self, conversation_history: list, max_chars: int = 600) -> str:
+        """Create a concise text summary of the conversation without requiring transcription services.
+
+        If no user transcripts are available, summarizes assistant prompts and system milestones.
+        """
+        if not conversation_history:
+            return "No conversation available."
+
+        # Normalize messages: support keys 'content' or 'text'
+        def extract_text(msg):
+            if isinstance(msg, dict):
+                return str(msg.get('content') or msg.get('text') or '').strip()
+            return str(msg)
+
+        # Take last ~20 entries for brevity
+        recent = conversation_history[-20:]
+        assistant_lines = []
+        user_lines = []
+        for msg in recent:
+            role = (msg.get('role') if isinstance(msg, dict) else None) or ''
+            text = extract_text(msg)
+            if not text:
+                continue
+            if role == 'assistant':
+                assistant_lines.append(text)
+            elif role == 'user':
+                user_lines.append(text)
+
+        bullets = []
+        if user_lines:
+            bullets.append("User responses captured: " + "; ".join(user_lines[:5]))
+        if assistant_lines:
+            bullets.append("Assistant prompts: " + "; ".join(assistant_lines[:5]))
+        if not bullets:
+            bullets.append("Conversation contained assistant prompts without user transcripts.")
+
+        summary = "; ".join(bullets)
+        if len(summary) > max_chars:
+            summary = summary[: max_chars - 3] + "..."
+        return summary
+
+    def extract_structured_from_conversation(self, fields_schema: list, conversation_history: list,
+                                             max_chars: int = 800) -> Dict[str, Any]:
+        """Use Gemini to extract structured fields and a brief summary from conversation.
+
+        Returns: { 'fields': Dict[str, Any], 'summary_text': str, 'confidence': int }
+        Fallbacks to a simple heuristic summary when Gemini isn't available.
+        """
+        # Build schema description
+        schema_lines = []
+        for f in fields_schema or []:
+            name = f.get('name')
+            ftype = f.get('type', 'text')
+            req = 'required' if f.get('required') else 'optional'
+            prompt = f.get('prompt', '')
+            schema_lines.append(f"- {name}: type={ftype}, {req}. Prompt: {prompt}")
+
+        # Conversation text
+        def fmt_msg(m):
+            role = m.get('role', '')
+            text = m.get('content') or m.get('text') or ''
+            return f"{role.upper()}: {text}".strip()
+
+        convo_text = "\n".join([fmt_msg(m) for m in conversation_history[-30:]])
+
+        # Target JSON shape
+        json_instructions = (
+            '{\n'
+            '  "fields": {"<field_name>": <value or null>, ...},\n'
+            '  "summary_text": "<one or two sentences>",\n'
+            '  "confidence": <0-100>\n'
+            '}'
+        )
+
+        # If Gemini not available, fallback
+        if not GENAI_AVAILABLE or not getattr(self, 'client', None):
+            return {
+                'fields': {},
+                'summary_text': self.summarize_conversation(conversation_history, max_chars=max_chars),
+                'confidence': 0
+            }
+
+        prompt = (
+            "You are an information extractor. Read the conversation and extract values for the given fields.\n"
+            "Return ONLY valid JSON matching the schema exactly.\n\n"
+            "Fields Schema:\n" + "\n".join(schema_lines) + "\n\n"
+            "Conversation (latest first may be most relevant):\n" + convo_text + "\n\n"
+            "Respond as JSON with this exact shape:\n" + json_instructions + "\n"
+            "Rules:\n"
+            "- For numbers, output numeric types.\n"
+            "- For choices, output the chosen option text.\n"
+            "- If unknown, set null.\n"
+            "- Keep summary_text under two sentences.\n"
+        )
+
+        try:
+            resp = self.client.models.generate_content(
+                model=self.text_model_id,
+                contents=prompt
+            )
+            text = None
+            # New SDK returns object with .text sometimes
+            if hasattr(resp, 'text') and resp.text:
+                text = resp.text
+            else:
+                # Fallback: try candidates
+                cand = getattr(resp, 'candidates', None)
+                if cand and len(cand) and hasattr(cand[0], 'content'):
+                    parts = getattr(cand[0].content, 'parts', None)
+                    if parts and len(parts) and hasattr(parts[0], 'text'):
+                        text = parts[0].text
+            if not text:
+                raise ValueError('Empty Gemini response')
+
+            # Extract JSON
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            data = {}
+            if start >= 0 and end > start:
+                data = json.loads(text[start:end])
+            else:
+                raise ValueError('No JSON found in response')
+
+            fields = data.get('fields') or {}
+            summary_text = data.get('summary_text') or self.summarize_conversation(conversation_history, max_chars=max_chars)
+            confidence = int(data.get('confidence') or 0)
+            return {
+                'fields': fields,
+                'summary_text': summary_text,
+                'confidence': confidence
+            }
+        except Exception as e:
+            logger.error(f"Gemini extraction failed: {e}")
+            return {
+                'fields': {},
+                'summary_text': self.summarize_conversation(conversation_history, max_chars=max_chars),
+                'confidence': 0
+            }
     
     def process_audio_input(self, audio_data: bytes, mime_type: str, field_def: Dict) -> Dict[str, Any]:
         """

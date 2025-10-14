@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 from django.shortcuts import render, get_object_or_404
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
@@ -223,6 +224,26 @@ def session_interface(request, session_id):
 def home(request):
     """Home page with documentation"""
     return render(request, 'voice_flow/home.html')
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def create_form_page(request):
+    """Render the Create Form UI page"""
+    return render(request, 'voice_flow/create_form.html')
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def dev_create_api_key(request):
+    """Create a development API key when DEBUG=True.
+    Returns 403 if DEBUG is False.
+    """
+    if not settings.DEBUG:
+        return Response({'detail': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+    name = request.data.get('name') or 'Dev Key'
+    api_key = APIKey.objects.create(name=name)
+    return Response({'key': api_key.key, 'name': api_key.name}, status=status.HTTP_201_CREATED)
 
 
 class APIKeyViewSet(viewsets.ModelViewSet):
