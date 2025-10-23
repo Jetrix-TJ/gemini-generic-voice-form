@@ -2,6 +2,8 @@
 $apiKey = "vf_ItJeay32VNwIv9Te-KO2J5sHa2H2pqpIg8dil4n6foI"
 $baseUrl = "http://localhost:8000"
 
+#description for each field in the form -> customer name : name of the customer, rating : rating of the customer
+#text llm gets this part. 
 # Define the form
 $formData = @{
     name = "Customer Survey"

@@ -145,16 +145,17 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
             tools = [
                 {
                     "function_declarations": [
+                        
                         {
-                            "name": "save_field",
-                            "description": "Save the user's answer for a specific form field.",
+                            "name": "submit_form_summary",
+                            "description": "Submit a single concise overall summary of the conversation and a JSON (as text) representing the function-calling payload based on the user's inputs.",
                             "parameters": {
                                 "type": "object",
                                 "properties": {
-                                    "field_name": {"type": "string"},
-                                    "value": {}
+                                    "summary_text": {"type": "string"},
+                                    "function_call_json_text": {"type": "string"}
                                 },
-                                "required": ["field_name", "value"]
+                                "required": ["summary_text", "function_call_json_text"]
                             }
                         },
                         {
@@ -165,7 +166,7 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                     ]
                 }
             ]
-            
+            #have only one field, instead of several answers, dumb it down for gemini, ask for the entire convo summary and then pst hte tool call to text 
             # Config - Enable transcription to get text alongside audio
             config = {
                 "system_instruction": system_instruction,
@@ -303,15 +304,17 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                             logger.info(f"Survey completion detected in text: {text_content}")
                             await self.handle_completion()
 
-                    # Handle tool calls (structured extraction without transcripts)
+                    # Handle tool calls (structured extraction without transcripts) pass summary text from the arguments here to text llm then to front end
                     try:
-                        tool_call = getattr(response, 'tool_call', None)
-                        if tool_call:
-                            name = getattr(tool_call, 'name', None) or getattr(tool_call, 'function', None)
-                            args = getattr(tool_call, 'args', None) or getattr(tool_call, 'parameters', None) or {}
+                        # Normalize into a list of {'name': str, 'args': dict}
+                        calls = self._extract_tool_calls(response)
+                        for call in calls:
+                            name = (call.get('name') or '').strip()
+                            args = call.get('args') or {}
                             logger.info(f"Tool call received: {name} args={args}")
+
                             if name == 'save_field' and isinstance(args, dict):
-                                field_name = args.get('field_name')
+                                field_name = self._get_ci(args, 'field_name', 'fieldName', 'name')
                                 value = args.get('value')
                                 if field_name:
                                     self.collected_data[field_name] = value
@@ -322,6 +325,22 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                                         'total_fields': self.form_config.get('total_fields', 0),
                                         'percentage': int(100 * len([v for v in self.collected_data.values() if v is not None]) / max(self.form_config.get('total_fields', 1), 1))
                                     }))
+
+                            elif name == 'submit_form_summary' and isinstance(args, dict):
+                                summary_text = self._get_ci(args, 'summary_text', 'summaryText', 'summary') or ''
+                                fc_json_text = self._get_ci(args, 'function_call_json_text', 'functionCallJsonText', 'json', 'payload') or '{}'
+                                try:
+                                    parsed = json.loads(fc_json_text)
+                                    if isinstance(parsed, dict):
+                                        self.collected_data.update(parsed)
+                                except Exception:
+                                    logger.warning("submit_form_summary function_call_json_text was not valid JSON")
+                                await self.send(text_data=json.dumps({
+                                    'type': 'summary_submitted',
+                                    'summary': summary_text,
+                                    'extracted_fields': self.collected_data
+                                }))
+
                             elif name == 'complete_form':
                                 await self.handle_completion()
                     except Exception as e:
@@ -347,6 +366,82 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error sending to browser: {e}", exc_info=True)
     
+    def _get_ci(self, mapping, *keys):
+        """Case-insensitive, variant-friendly getter from dict-like args."""
+        try:
+            if not isinstance(mapping, dict):
+                return None
+            for k in keys:
+                if k in mapping:
+                    return mapping.get(k)
+            lower_map = {str(k).lower(): v for k, v in mapping.items()}
+            for k in keys:
+                v = lower_map.get(str(k).lower())
+                if v is not None:
+                    return v
+        except Exception:
+            return None
+        return None
+
+    def _extract_tool_calls(self, response):
+        """
+        Normalize tool/function calls from various SDK response shapes into a list of
+        { 'name': str, 'args': dict } items.
+        """
+        calls = []
+        try:
+            # Direct singular tool_call
+            tc = getattr(response, 'tool_call', None)
+            if tc:
+                fc_list = getattr(tc, 'function_calls', None) or getattr(tc, 'tool_calls', None)
+                if fc_list and isinstance(fc_list, (list, tuple)):
+                    for fc in fc_list:
+                        name = getattr(fc, 'name', None) or getattr(fc, 'function', None)
+                        args = getattr(fc, 'args', None) or getattr(fc, 'parameters', None) or {}
+                        if name:
+                            calls.append({'name': name, 'args': args if isinstance(args, dict) else {}})
+                else:
+                    name = getattr(tc, 'name', None) or getattr(tc, 'function', None)
+                    args = getattr(tc, 'args', None) or getattr(tc, 'parameters', None) or {}
+                    if name:
+                        calls.append({'name': name, 'args': args if isinstance(args, dict) else {}})
+
+            # Plural attributes directly on response
+            for attr in ('function_calls', 'tool_calls'):
+                fc_list = getattr(response, attr, None)
+                if fc_list and isinstance(fc_list, (list, tuple)):
+                    for fc in fc_list:
+                        name = getattr(fc, 'name', None) or getattr(fc, 'function', None)
+                        args = getattr(fc, 'args', None) or getattr(fc, 'parameters', None) or {}
+                        if name:
+                            calls.append({'name': name, 'args': args if isinstance(args, dict) else {}})
+
+            # server_content.model_turn.parts nested function/tool calls
+            sc = getattr(response, 'server_content', None)
+            if sc and hasattr(sc, 'model_turn') and getattr(sc.model_turn, 'parts', None):
+                for part in sc.model_turn.parts:
+                    for cand_attr in ('function_call', 'tool_call'):
+                        fc = getattr(part, cand_attr, None)
+                        if fc:
+                            name = getattr(fc, 'name', None) or getattr(fc, 'function', None)
+                            args = getattr(fc, 'args', None) or getattr(fc, 'parameters', None) or {}
+                            if name:
+                                calls.append({'name': name, 'args': args if isinstance(args, dict) else {}})
+                    name = getattr(part, 'name', None) or getattr(part, 'function', None)
+                    if name and (hasattr(part, 'args') or hasattr(part, 'parameters')):
+                        args = getattr(part, 'args', None) or getattr(part, 'parameters', None) or {}
+                        calls.append({'name': name, 'args': args if isinstance(args, dict) else {}})
+        except Exception as e:
+            logger.error(f"Error extracting tool calls: {e}")
+
+        # Debug: log consolidated calls for visibility
+        if calls:
+            try:
+                logger.info(f"Consolidated tool calls: {[c.get('name') for c in calls]}")
+            except Exception:
+                pass
+        return calls
+
     def build_system_instruction(self):
         """Build system instruction for form"""
         fields = self.form_config['fields']
@@ -362,24 +457,30 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
         first_field = fields[0] if fields else None
         first_prompt = first_field['prompt'] if first_field else "Hello!"
         
-        return f"""You are a form interviewer. Ask ONLY these questions in order:
+        return f"""You are a friendly conversational assistant guiding a short voice form.
 
+PRIMARY GOAL:
+- Keep a natural, brief conversation to gather the necessary information.
+- Prefer a single summary-first submission at the end via submit_form_summary.
+
+AVAILABLE QUESTIONS (use them as guidance, but keep it conversational):
 {chr(10).join(field_list)}
 
-START NOW by saying ONLY this:
+START NOW by saying ONLY this opening line:
 "{self.form_config.get('ai_prompt', 'Hello!')} {first_prompt}"
 
-Then WAIT for the answer. When you get an answer, say "Got it" and ask the next question.
-Keep all responses under 10 words. Do NOT chat - ONLY ask the form questions.
+STYLE RULES:
+- Keep replies concise.
+- Be friendly and on-topic.
 
-After ALL questions, say EXACTLY: "Thank you! Survey complete."
+COMPLETION RULES (CRITICAL):
+- When you have enough information, call submit_form_summary with parameters:
+  {{"summary_text": "<1-2 sentence concise summary>", "function_call_json_text": "<JSON string representing the extracted answers>"}}
+- The function_call_json_text MUST be valid JSON string with keys matching field names and correct types.
+- After calling submit_form_summary, say EXACTLY: "Thank you! Survey complete." and then call complete_form.
 
-TOOL USAGE (CRITICAL):
-- After the user answers a question, immediately call the function save_field with JSON parameters:
-  {{"field_name": "<exact field name from above>", "value": <parsed value>}}.
-- Use the correct data type: numbers as numbers, booleans as true/false.
-- When ALL REQUIRED fields have been saved via save_field, call the function complete_form with empty parameters.
-- Continue speaking the short confirmation aloud, but ALWAYS issue the appropriate tool call(s) so the system stores data.
+LEGACY FALLBACK (only if necessary):
+- If required, you MAY call save_field per question, then call complete_form when done.
 """
     
     def is_survey_complete(self, text):
@@ -428,6 +529,37 @@ TOOL USAGE (CRITICAL):
                 else:
                     summary = ai_service.summarize_conversation(self.conversation_history)
             
+            # Merge with values captured via tool calls. Prefer non-null from collected_data
+            if self.collected_data:
+                merged_fields = dict(extracted_fields or {})
+                try:
+                    for k, v in self.collected_data.items():
+                        if v is not None and v != '':
+                            merged_fields[k] = v
+                    extracted_fields = merged_fields
+                except Exception:
+                    pass
+
+            # Ensure in-memory collected_data reflects the merged fields before saving
+            try:
+                if extracted_fields:
+                    self.collected_data.update(extracted_fields)
+            except Exception:
+                pass
+
+            # Build a friendly AI-generated summary from merged fields when available,
+            # otherwise fall back to conversation-based summary.
+            try:
+                if extracted_fields:
+                    summary = ai_service.summarize_fields(
+                        extracted_fields,
+                        form_title=self.form_config.get('form_name')
+                    )
+                if not summary:
+                    summary = ai_service.summarize_conversation(self.conversation_history)
+            except Exception:
+                summary = ai_service.summarize_conversation(self.conversation_history)
+
             # Mark session as completed
             await self.mark_session_completed()
             

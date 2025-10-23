@@ -9,6 +9,16 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Left: Form details and fields -->
         <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow">
+            <div class="mb-6 p-4 border-2 border-dashed rounded bg-gray-50">
+                <h2 class="text-lg font-semibold mb-2">Describe your form</h2>
+                <p class="text-sm text-gray-600 mb-2">Write what this form should do and the information to collect. We'll generate the schema and fields for you.</p>
+                <textarea id="form-desc" class="mt-1 w-full border rounded px-3 py-2" rows="3" placeholder="Example: Create a job application form to collect full name, email, years of experience (number), and optional portfolio URL."></textarea>
+                <div class="mt-3 flex items-center space-x-3">
+                    <button id="btn-generate-schema" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Generate from description</button>
+                    <span id="gen-status" class="text-sm text-gray-600"></span>
+                </div>
+                <div id="clarifications" class="mt-3 text-sm text-amber-700"></div>
+            </div>
             <div class="mb-4 p-3 border rounded bg-gray-50">
                 <div class="flex flex-col md:flex-row md:items-end md:space-x-3 space-y-2 md:space-y-0">
                     <div class="flex-1">
@@ -91,9 +101,13 @@
     const addFieldBtn = document.getElementById('add-field');
     const saveBtn = document.getElementById('save-form');
     const saveStatus = document.getElementById('save-status');
+    const generateBtn = document.getElementById('btn-generate-schema');
+    const genStatus = document.getElementById('gen-status');
+    const clarificationsEl = document.getElementById('clarifications');
 
     const apiBase = '/api/forms/';
     const devCreateKeyUrl = '/dev/create-api-key/';
+    const genSchemaUrl = '/api/generate-form-schema/';
 
     function newFieldRow() {
         const wrapper = document.createElement('div');
@@ -153,6 +167,20 @@
         return wrapper;
     }
 
+    function newFieldRowPrefilled(field) {
+        const row = newFieldRow();
+        if (field) {
+            row.querySelector('.field-name').value = field.name || '';
+            row.querySelector('.field-type').value = field.type || 'text';
+            row.querySelector('.field-required').value = String(!!field.required);
+            row.querySelector('.field-prompt').value = field.prompt || '';
+            if (field.validation && Object.keys(field.validation).length) {
+                row.querySelector('.field-validation').value = JSON.stringify(field.validation);
+            }
+        }
+        return row;
+    }
+
     function collectConfig() {
         const fields = Array.from(fieldsList.children).map(row => {
             const name = row.querySelector('.field-name').value.trim();
@@ -192,6 +220,50 @@
     // Start with one field
     fieldsList.appendChild(newFieldRow());
     renderPreview();
+
+    function applyGeneratedSchema(schema) {
+        if (!schema) return;
+        const nameEl = document.getElementById('form-name');
+        const descEl = document.getElementById('form-description');
+        const aiEl = document.getElementById('ai-prompt');
+        if (schema.name) nameEl.value = schema.name;
+        if (schema.description) descEl.value = schema.description;
+        if (schema.ai_prompt) aiEl.value = schema.ai_prompt;
+        // Replace fields with generated
+        fieldsList.innerHTML = '';
+        (schema.fields || []).forEach(f => fieldsList.appendChild(newFieldRowPrefilled(f)));
+        renderPreview();
+    }
+
+    async function generateFromDescription() {
+        clarificationsEl.textContent = '';
+        genStatus.textContent = 'Generating...';
+        try {
+            const formDesc = document.getElementById('form-desc').value.trim();
+            if (!formDesc) { genStatus.textContent = 'Enter a description first.'; return; }
+            const res = await fetch(genSchemaUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ formDesc })
+            });
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(txt || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            applyGeneratedSchema(data.schema);
+            const qs = data.clarifying_questions || [];
+            if (qs.length) {
+                clarificationsEl.innerHTML = '<strong>Clarifying questions:</strong><ul class="list-disc list-inside">' + qs.map(q => `<li>${q}</li>`).join('') + '</ul>';
+            }
+            genStatus.textContent = '✅ Generated';
+        } catch (e) {
+            console.error(e);
+            genStatus.textContent = '❌ Failed to generate';
+        }
+    }
+
+    generateBtn.addEventListener('click', generateFromDescription);
 
     async function saveForm() {
         saveStatus.textContent = 'Saving...';

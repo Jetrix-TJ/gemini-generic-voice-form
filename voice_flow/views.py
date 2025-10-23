@@ -18,6 +18,7 @@ from .serializers import (
     APIKeySerializer
 )
 from .tasks import send_webhook
+from .ai_service import ai_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -219,6 +220,34 @@ def session_interface(request, session_id):
     return render(request, template, context)
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def finalize_session_public(request, session_id):
+    """Public endpoint to finalize a session with explicit field values.
+    Body: { "fields": {"field_name": value, ...} }
+    """
+    try:
+        session = MagicLinkSession.objects.select_related('form_config').get(session_id=session_id)
+    except MagicLinkSession.DoesNotExist:
+        return Response({'detail': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if session.is_expired():
+        return Response({'detail': 'Session expired'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    data = request.data or {}
+    fields = data.get('fields') or {}
+    if not isinstance(fields, dict):
+        return Response({'detail': 'Invalid fields payload'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Update collected data
+    for k, v in fields.items():
+        session.collected_data[k] = v
+    session.fields_completed = len([v for v in session.collected_data.values() if v is not None])
+    session.save(update_fields=['collected_data', 'fields_completed'])
+    
+    return Response({'ok': True, 'collected_data': session.collected_data})
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def home(request):
@@ -231,6 +260,21 @@ def home(request):
 def create_form_page(request):
     """Render the Create Form UI page"""
     return render(request, 'voice_flow/create_form.html')
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def generate_form_schema(request):
+    """Generate a form schema from a natural language description.
+
+    Body: { "formDesc": "...", "history": [ {role, content}, ... ] }
+    Returns: { "schema": {...}, "clarifying_questions": [...] }
+    """
+    data = request.data or {}
+    form_desc = data.get('formDesc') or data.get('formdesc') or data.get('description') or ''
+    history = data.get('history') or []
+    result = ai_service.generate_form_schema(form_desc, history)
+    return Response(result)
 
 
 @api_view(['POST'])
