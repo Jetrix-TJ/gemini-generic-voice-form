@@ -13,6 +13,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
+    portaudio19-dev \
+    libasound-dev \
+    libportaudio2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -29,9 +32,10 @@ RUN mkdir -p logs
 # Collect static files
 RUN python manage.py collectstatic --noinput || true
 
-# Expose port
-EXPOSE 8000
+# Expose port (Cloud Run uses PORT env variable, default to 8000 for local)
+ENV PORT=8000
+EXPOSE $PORT
 
 # Run migrations and start server
-CMD ["sh", "-c", "python manage.py migrate && daphne -b 0.0.0.0 -p 8000 voicegen.asgi:application"]
+CMD sh -c "python manage.py migrate && daphne -b 0.0.0.0 -p ${PORT} voicegen.asgi:application"
 
