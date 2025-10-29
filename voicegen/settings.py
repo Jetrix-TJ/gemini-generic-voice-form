@@ -9,6 +9,10 @@ import dj_database_url
 # Load environment variables
 load_dotenv()
 
+# Proxy SSL Header Configuration
+# This allows Django to detect HTTPS when behind a reverse proxy
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
 
