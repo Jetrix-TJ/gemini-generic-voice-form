@@ -17,6 +17,9 @@ from django.utils.safestring import mark_safe
 import json
 from django.http import HttpResponse
 import csv
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth import login as auth_login
+from django.shortcuts import redirect
 from .models import VoiceFormConfig, MagicLinkSession, APIKey
 from .serializers import (
     VoiceFormConfigSerializer,
@@ -428,6 +431,25 @@ def export_form_csv(request, form_id):
         writer.writerow(row)
 
     return response
+
+
+def signup(request):
+    """Public signup to create an account and auto-provision an API key."""
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            try:
+                APIKey.objects.create(name='Default Key', user=user)
+            except Exception:
+                pass
+            auth_login(request, user)
+            return redirect('dashboard')
+    else:
+        form = UserCreationForm()
+    return render(request, 'registration/signup.html', {'form': form})
 
 
 @api_view(['POST'])

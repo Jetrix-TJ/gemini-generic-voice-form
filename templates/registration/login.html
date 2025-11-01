@@ -19,6 +19,7 @@
       </div>
       <button class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Sign in</button>
       <input type="hidden" name="next" value="{{ next|default:'/dashboard/' }}" />
+      <a href="{% url 'signup' %}" class="ml-3 text-sm text-gray-600 hover:underline">Create account</a>
     </form>
   </div>
 </div>
