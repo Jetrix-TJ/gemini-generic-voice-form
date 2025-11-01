@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-12">
+  <div class="bg-white shadow rounded-lg p-6">
+    <h1 class="text-xl font-bold mb-4">Sign in</h1>
+    {% if form.errors %}
+      <div class="mb-4 text-sm text-red-600">Invalid username or password.</div>
+    {% endif %}
+    <form method="post" action="{% url 'login' %}">
+      {% csrf_token %}
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700">Username</label>
+        <input type="text" name="username" autofocus required class="mt-1 w-full border rounded px-3 py-2" />
+      </div>
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700">Password</label>
+        <input type="password" name="password" required class="mt-1 w-full border rounded px-3 py-2" />
+      </div>
+      <button class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Sign in</button>
+      <input type="hidden" name="next" value="{{ next|default:'/dashboard/' }}" />
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+

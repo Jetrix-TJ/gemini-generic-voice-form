@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Form Details - {{ form.name }}{% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="mb-6">
+    <a href="/dashboard/" class="text-sm text-indigo-600 hover:underline">← Back to dashboard</a>
+  </div>
+
+  <div class="bg-white rounded-lg shadow p-6 mb-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold">{{ form.name }}</h1>
+        <p class="text-gray-600 mt-1">{{ form.description }}</p>
+      </div>
+      <div class="text-sm text-gray-600">
+        <a class="text-indigo-600 hover:underline" href="/api/forms/{{ form.form_id }}/">View API</a>
+        <span class="mx-2">•</span>
+        <a class="text-indigo-600 hover:underline" href="/f/{{ form.form_id }}/">Open</a>
+        <span class="mx-2">•</span>
+        <a class="text-indigo-600 hover:underline" href="/dashboard/forms/{{ form.form_id }}/export.csv">Export CSV</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2">
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold mb-4">Recent Sessions</h2>
+        {% if session_rows %}
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="text-left text-gray-600 border-b">
+              <th class="py-2 pr-4">Session</th>
+              <th class="py-2 pr-4">Status</th>
+              <th class="py-2 pr-4">Created</th>
+              <th class="py-2 pr-4">Completed</th>
+              <th class="py-2 pr-4">Summary</th>
+              <th class="py-2 pr-4">JSON</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in session_rows %}
+            <tr class="border-b align-top">
+              <td class="py-2 pr-4 font-mono text-xs">{{ row.session_id }}</td>
+              <td class="py-2 pr-4">{{ row.status }}</td>
+              <td class="py-2 pr-4">{{ row.created_at|date:"Y-m-d H:i" }}</td>
+              <td class="py-2 pr-4">{% if row.completed_at %}{{ row.completed_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+              <td class="py-2 pr-4 w-80">{% if row.summary and row.summary != '—' %}{{ row.summary }}{% else %}{% if row.json %}<em class="text-gray-500">LLM summary pending</em>{% else %}—{% endif %}{% endif %}</td>
+              <td class="py-2 pr-4">
+                <details>
+                  <summary class="text-indigo-600 cursor-pointer">View</summary>
+                  <pre class="mt-2 bg-gray-50 p-2 rounded overflow-x-auto text-xs">{{ row.json }}</pre>
+                </details>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-gray-600">No sessions yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="lg:col-span-1">
+      <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold mb-2">Form JSON</h2>
+        <details open>
+          <summary class="text-indigo-600 cursor-pointer">View</summary>
+          <pre class="mt-2 bg-gray-50 p-2 rounded overflow-x-auto text-xs">{{ form_json }}</pre>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+

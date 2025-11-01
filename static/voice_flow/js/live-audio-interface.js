@@ -25,12 +25,21 @@ class LiveAudioInterface {
         this.CHANNELS = 1;  // Mono
         
         // UI Elements
-        this.micButton = document.getElementById('mic-button');
+        this.startButton = document.getElementById('btn-start');
+        this.stopButton = document.getElementById('btn-stop');
+        this.liveIndicator = document.getElementById('live-indicator');
         this.statusText = document.getElementById('status-text');
         this.connectionStatus = document.getElementById('connection-status');
         this.progressBar = document.getElementById('progress-bar');
         this.progressText = document.getElementById('progress-text');
         this.conversationHistory = document.getElementById('conversation-history');
+        // UI preferences
+        this.showTranscripts = false; // hide verbose turn-by-turn text by default
+        // Completion coordination state
+        this.latestExtracted = null; // from summary_submitted
+        this.latestSummaryText = null; // from summary_submitted
+        this.deferredCompletion = null; // holds data from 'completed' until we see summary
+        this.autoSaveDone = false;
         
         this.init();
     }
@@ -47,10 +56,18 @@ class LiveAudioInterface {
         this.connectWebSocket();
         
         // Set up event listeners
-        this.micButton.addEventListener('click', () => {
-            console.log('Microphone button clicked');
-            this.toggleRecording();
-        });
+        if (this.startButton) {
+            this.startButton.addEventListener('click', async () => {
+                console.log('Start button clicked');
+                await this.startRecording();
+            });
+        }
+        if (this.stopButton) {
+            this.stopButton.addEventListener('click', () => {
+                console.log('Stop button clicked');
+                this.stopRecording();
+            });
+        }
         
         // Complete button
         const completeButton = document.getElementById('complete-button');
@@ -129,26 +146,75 @@ class LiveAudioInterface {
                 break;
             
             case 'completed':
+                // If model sends completed before summary_submitted, defer autosave briefly
+                this.deferredCompletion = data;
                 this.handleCompletion(data);
+                // Try autosave after a brief wait if we don't yet have extracted fields
+                setTimeout(() => {
+                    if (!this.autoSaveDone) {
+                        const fields = this.latestExtracted || data.extracted_fields || {};
+                        this.tryAutoSave(fields);
+                    }
+                }, 2000);
+                break;
+            
+            case 'summary_submitted':
+                // Capture latest summary and fields
+                if (typeof data.summary === 'string' && data.summary.trim()) {
+                    this.latestSummaryText = data.summary.trim();
+                }
+                if (data.extracted_fields && typeof data.extracted_fields === 'object') {
+                    this.latestExtracted = data.extracted_fields;
+                }
+                // If completion already happened and autosave not yet done, save now
+                if (this.deferredCompletion && !this.autoSaveDone) {
+                    this.tryAutoSave(this.latestExtracted || {});
+                }
+                // Replace transcript view with latest summary panel
+                try {
+                    this.conversationHistory.innerHTML = '';
+                    const summaryDiv = document.createElement('div');
+                    summaryDiv.className = 'p-4 rounded-lg bg-green-50';
+                    const title = document.createElement('div');
+                    title.className = 'font-semibold text-sm text-green-800 mb-1';
+                    title.textContent = 'Summary';
+                    summaryDiv.appendChild(title);
+                    const p = document.createElement('p');
+                    p.className = 'text-sm text-green-900';
+                    p.textContent = (this.latestSummaryText || data.summary || '').trim();
+                    summaryDiv.appendChild(p);
+                    if (data.extracted_fields && Object.keys(data.extracted_fields).length) {
+                        const panel = document.createElement('div');
+                        panel.className = 'p-4 rounded-lg bg-blue-50 mt-2';
+                        const t = document.createElement('div');
+                        t.className = 'font-semibold text-sm text-blue-800 mb-1';
+                        t.textContent = 'Extracted Fields';
+                        panel.appendChild(t);
+                        const list = document.createElement('ul');
+                        list.className = 'list-disc list-inside text-sm text-blue-900 space-y-0.5';
+                        Object.entries(data.extracted_fields).forEach(([k, v]) => {
+                            const li = document.createElement('li');
+                            li.textContent = `${k}: ${v == null ? '—' : v}`;
+                            list.appendChild(li);
+                        });
+                        panel.appendChild(list);
+                        summaryDiv.appendChild(panel);
+                    }
+                    this.conversationHistory.appendChild(summaryDiv);
+                    this.conversationHistory.scrollTop = this.conversationHistory.scrollHeight;
+                } catch (e) { /* no-op */ }
                 break;
             
             case 'transcript':
-                // AI text for display
-                this.addToConversation('AI', data.text);
+                // Optional verbose transcript (hidden by default)
+                if (this.showTranscripts && data.text) {
+                    this.addToConversation('AI', data.text);
+                }
                 break;
             
             case 'error':
                 this.showError(data.message);
                 break;
-        }
-    }
-    
-    async toggleRecording() {
-        console.log('Toggle recording - currently:', this.isRecording);
-        if (this.isRecording) {
-            this.stopRecording();
-        } else {
-            await this.startRecording();
         }
     }
     
@@ -224,7 +290,12 @@ class LiveAudioInterface {
             console.log('Recording started! Speak now...');
             
             // Update UI
-            this.micButton.classList.add('recording', 'bg-red-600');
+            if (this.startButton) this.startButton.disabled = true;
+            if (this.stopButton) {
+                this.stopButton.disabled = false;
+                this.stopButton.classList.add('recording');
+            }
+            if (this.liveIndicator) this.liveIndicator.classList.remove('hidden');
             this.updateStatus('🔴 RECORDING - Speak now!');
             
         } catch (error) {
@@ -257,8 +328,11 @@ class LiveAudioInterface {
         }
         
         // Update UI
-        this.micButton.classList.remove('recording', 'bg-red-600');
-        this.updateStatus('Click microphone to speak');
+        if (this.stopButton) this.stopButton.classList.remove('recording');
+        if (this.liveIndicator) this.liveIndicator.classList.add('hidden');
+        if (this.startButton) this.startButton.disabled = false;
+        if (this.stopButton) this.stopButton.disabled = true;
+        this.updateStatus('Click Start to speak');
     }
     
     async playAudioChunk(arrayBuffer) {
@@ -384,6 +458,8 @@ class LiveAudioInterface {
         document.getElementById('completion-message').textContent = data.message;
         
         this.progressBar.style.width = '100%';
+        // Clear transcript area and show a concise completion summary
+        this.conversationHistory.innerHTML = '';
         this.addToConversation('System', 'Form completed successfully! 🎉');
 
         // Display summary as a single paragraph if provided
@@ -422,60 +498,106 @@ class LiveAudioInterface {
             this.conversationHistory.scrollTop = this.conversationHistory.scrollHeight;
         }
 
-        // Show manual finalize overlay to confirm/edit values
+        // Attempt autosave with best available fields
+        const immediateFields = (data.extracted_fields && Object.keys(data.extracted_fields).length) ? data.extracted_fields : (this.latestExtracted || {});
+        this.tryAutoSave(immediateFields);
+        
+        // Manual finalize overlay remains as fallback if autosave fails or no fields available
+        this.prepareManualFinalizeOverlay(data);
+    }
+
+    tryAutoSave(extracted) {
+        if (!window.finalizeUrl || this.autoSaveDone) return;
+        try {
+            const payload = {};
+            if (Array.isArray(window.formFields)) {
+                for (const def of window.formFields) {
+                    const v = extracted ? extracted[def.name] : undefined;
+                    if (def.type === 'number') {
+                        const num = Number(v);
+                        payload[def.name] = Number.isNaN(num) ? null : num;
+                    } else {
+                        payload[def.name] = v == null || v === '' ? null : v;
+                    }
+                }
+            } else if (extracted && typeof extracted === 'object') {
+                Object.assign(payload, extracted);
+            }
+            // Do not auto-save if all values are null/empty
+            const hasValue = Object.values(payload).some(v => v !== null && v !== '');
+            if (!hasValue) return;
+            fetch(window.finalizeUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: payload })
+            }).then(async (res) => {
+                if (!res.ok) throw new Error(await res.text());
+                this.autoSaveDone = true;
+                this.addToConversation('System', 'Summary auto-saved. ✅');
+                const overlay = document.getElementById('finalize-overlay');
+                if (overlay) overlay.classList.add('hidden');
+            }).catch((e) => {
+                console.warn('Auto-save failed, user may finalize manually.', e);
+            });
+        } catch (e) {
+            console.warn('Auto-save error', e);
+        }
+    }
+
+    prepareManualFinalizeOverlay(data) {
         try {
             const overlay = document.getElementById('finalize-overlay');
             const fieldsDiv = document.getElementById('finalize-fields');
             const btn = document.getElementById('btn-save-summary');
-            if (overlay && fieldsDiv && btn && Array.isArray(window.formFields)) {
-                overlay.classList.remove('hidden');
-                fieldsDiv.innerHTML = '';
-                window.formFields.forEach(f => {
-                    const row = document.createElement('div');
-                    row.className = 'grid grid-cols-3 gap-2';
-                    const label = document.createElement('label');
-                    label.className = 'col-span-1 text-sm text-gray-700';
-                    label.textContent = f.name;
-                    const input = document.createElement('input');
-                    input.className = 'col-span-2 border rounded px-2 py-1';
-                    const existing = data.extracted_fields ? data.extracted_fields[f.name] : undefined;
-                    if (existing != null) input.value = existing;
-                    input.dataset.fieldName = f.name;
-                    row.appendChild(label);
-                    row.appendChild(input);
-                    fieldsDiv.appendChild(row);
-                });
+            if (!(overlay && fieldsDiv && btn && Array.isArray(window.formFields))) return;
+            // Pre-fill from best-known values
+            const base = (this.latestExtracted && Object.keys(this.latestExtracted).length) ? this.latestExtracted : (data.extracted_fields || {});
+            overlay.classList.remove('hidden');
+            fieldsDiv.innerHTML = '';
+            window.formFields.forEach(f => {
+                const row = document.createElement('div');
+                row.className = 'grid grid-cols-3 gap-2';
+                const label = document.createElement('label');
+                label.className = 'col-span-1 text-sm text-gray-700';
+                label.textContent = f.name;
+                const input = document.createElement('input');
+                input.className = 'col-span-2 border rounded px-2 py-1';
+                const existing = base ? base[f.name] : undefined;
+                if (existing != null) input.value = existing;
+                input.dataset.fieldName = f.name;
+                row.appendChild(label);
+                row.appendChild(input);
+                fieldsDiv.appendChild(row);
+            });
 
-                btn.onclick = async () => {
-                    const payload = {};
-                    Array.from(fieldsDiv.querySelectorAll('input')).forEach(inp => {
-                        let val = inp.value;
-                        const fname = inp.dataset.fieldName;
-                        const def = window.formFields.find(ff => ff.name === fname);
-                        if (def && def.type === 'number') {
-                            const num = Number(val);
-                            if (!Number.isNaN(num)) val = num;
-                        }
-                        payload[fname] = val || null;
-                    });
-                    // POST to finalize endpoint
-                    try {
-                        const res = await fetch(window.finalizeUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ fields: payload })
-                        });
-                        if (!res.ok) throw new Error(await res.text());
-                        overlay.classList.add('hidden');
-                        this.addToConversation('System', 'Summary saved. ✅');
-                    } catch (e) {
-                        console.error(e);
-                        this.addToConversation('System', 'Failed to save summary.');
+            btn.onclick = async () => {
+                const payload = {};
+                Array.from(fieldsDiv.querySelectorAll('input')).forEach(inp => {
+                    let val = inp.value;
+                    const fname = inp.dataset.fieldName;
+                    const def = window.formFields.find(ff => ff.name === fname);
+                    if (def && def.type === 'number') {
+                        const num = Number(val);
+                        if (!Number.isNaN(num)) val = num;
                     }
-                };
-            }
+                    payload[fname] = val || null;
+                });
+                try {
+                    const res = await fetch(window.finalizeUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fields: payload })
+                    });
+                    if (!res.ok) throw new Error(await res.text());
+                    overlay.classList.add('hidden');
+                    this.addToConversation('System', 'Summary saved. ✅');
+                } catch (e) {
+                    console.error(e);
+                    this.addToConversation('System', 'Failed to save summary.');
+                }
+            };
         } catch (e) {
-            console.warn('Finalize overlay error:', e);
+            console.warn('Finalize overlay prep error:', e);
         }
     }
     
@@ -485,7 +607,8 @@ class LiveAudioInterface {
     }
     
     enableControls() {
-        this.micButton.disabled = false;
+        if (this.startButton) this.startButton.disabled = false;
+        if (this.stopButton) this.stopButton.disabled = true;
     }
 }
 

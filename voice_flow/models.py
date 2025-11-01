@@ -114,6 +114,7 @@ class MagicLinkSession(models.Model):
     # Collected Data
     collected_data = models.JSONField(default=dict, help_text="Data collected during the session")
     conversation_history = models.JSONField(default=list, help_text="Full conversation transcript")
+    summary_text = models.TextField(blank=True)
     
     # Timing
     created_at = models.DateTimeField(auto_now_add=True)

@@ -54,6 +54,17 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
         self.conversation_history = []  # Track conversation
         self.current_field_index = 0  # Track which field we're on
         self.collected_data = {}  # Store responses
+        # Server-side silence detection state
+        self._silence_threshold_abs = 120  # average absolute amplitude threshold (16-bit)
+        self._silence_timeout_ms = 6500
+        self._last_sound_monotonic = None
+        self._speech_detected = False
+        self._silence_monitor_triggered = False
+        # Coordinate completion with model-provided summary
+        self._summary_event = asyncio.Event()
+        # Additional guards
+        self._last_client_audio_monotonic = None
+        self._last_ai_audio_monotonic = None
         
         # Accept WebSocket connection
         await self.accept()
@@ -101,6 +112,23 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
             if bytes_data and self.audio_out_queue:
                 # Audio from browser - send to Gemini
                 logger.debug(f"Received {len(bytes_data)} bytes from browser")
+                # Update silence detector (RMS over 16-bit PCM)
+                try:
+                    from array import array
+                    pcm = array('h')
+                    pcm.frombytes(bytes_data)
+                    if pcm:
+                        avg_abs = sum(1 if v == -32768 else abs(v) for v in pcm) / len(pcm)
+                        now = asyncio.get_running_loop().time()
+                        if avg_abs >= self._silence_threshold_abs:
+                            self._last_sound_monotonic = now
+                            self._speech_detected = True
+                            # Consider this as active client speech for gap checks
+                            self._last_client_audio_monotonic = now
+                        elif self._last_sound_monotonic is None:
+                            self._last_sound_monotonic = now
+                except Exception as e:
+                    logger.debug(f"Silence detector error (ignored): {e}")
                 await self.audio_out_queue.put({
                     "data": bytes_data,
                     "mime_type": "audio/pcm"
@@ -177,6 +205,11 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                     "voice_config": {
                         "prebuilt_voice_config": {"voice_name": "Aoede"}
                     }
+                },
+                "realtime_input_config": {
+                    "automatic_activity_detection": {
+                        "silence_duration_ms": 3000
+                    }
                 }
             }
             
@@ -209,6 +242,7 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                 tg.create_task(self.send_realtime())
                 tg.create_task(self.receive_audio_from_gemini())
                 tg.create_task(self.send_audio_to_browser())
+                tg.create_task(self._monitor_silence())
                 
                 logger.info("All audio tasks started - streaming active!")
                 
@@ -242,6 +276,10 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                     if data := response.data:
                         # Put audio in queue to send to browser
                         logger.debug(f"Received {len(data)} bytes of audio from Gemini")
+                        try:
+                            self._last_ai_audio_monotonic = asyncio.get_running_loop().time()
+                        except Exception:
+                            pass
                         self.audio_in_queue.put_nowait(data)
                         continue
                     
@@ -340,6 +378,10 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                                     'summary': summary_text,
                                     'extracted_fields': self.collected_data
                                 }))
+                                try:
+                                    self._summary_event.set()
+                                except Exception:
+                                    pass
 
                             elif name == 'complete_form':
                                 await self.handle_completion()
@@ -365,6 +407,43 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                 await self.send(bytes_data=audio_data)
         except Exception as e:
             logger.error(f"Error sending to browser: {e}", exc_info=True)
+    
+    async def _monitor_silence(self):
+        """Monitor incoming audio and auto-complete after sustained silence."""
+        try:
+            loop = asyncio.get_running_loop()
+            while True:
+                await asyncio.sleep(0.25)
+                if self._silence_monitor_triggered:
+                    break
+                if not self._speech_detected:
+                    continue  # wait until any speech has been detected
+                if self._last_sound_monotonic is None:
+                    continue
+                now = loop.time()
+                silent_ms = int((now - self._last_sound_monotonic) * 1000)
+                # Also consider raw last client audio arrival to avoid missing quiet speech
+                if self._last_client_audio_monotonic is not None:
+                    client_gap_ms = int((now - self._last_client_audio_monotonic) * 1000)
+                else:
+                    client_gap_ms = silent_ms
+                # Avoid completing while AI is speaking or just finished
+                ai_gap_ms = int((now - (self._last_ai_audio_monotonic or 0)) * 1000)
+                if silent_ms >= self._silence_timeout_ms and client_gap_ms >= self._silence_timeout_ms and ai_gap_ms > 1500:
+                    logger.info(f"Silence > {self._silence_timeout_ms}ms detected; waiting for summary then auto-completing {self.session_id}.")
+                    self._silence_monitor_triggered = True
+                    # Grace period to allow model to send summary/tool calls
+                    try:
+                        await asyncio.wait_for(self._summary_event.wait(), timeout=2.0)
+                    except asyncio.TimeoutError:
+                        pass
+                    try:
+                        await self.handle_completion()
+                    except Exception as e:
+                        logger.error(f"Error during auto-completion: {e}")
+                    break
+        except asyncio.CancelledError:
+            pass
     
     def _get_ci(self, mapping, *keys):
         """Case-insensitive, variant-friendly getter from dict-like args."""
@@ -560,6 +639,12 @@ LEGACY FALLBACK (only if necessary):
             except Exception:
                 summary = ai_service.summarize_conversation(self.conversation_history)
 
+            # Persist summary for this session
+            try:
+                await self.save_summary_text(summary)
+            except Exception as e:
+                logger.warning(f"Failed to save summary_text: {e}")
+
             # Mark session as completed
             await self.mark_session_completed()
             
@@ -587,6 +672,16 @@ LEGACY FALLBACK (only if necessary):
             session.save()
         except Exception as e:
             logger.error(f"Error saving conversation: {e}")
+
+    @database_sync_to_async
+    def save_summary_text(self, summary):
+        """Save LLM summary to the session."""
+        try:
+            session = MagicLinkSession.objects.get(session_id=self.session_id)
+            session.summary_text = summary or ''
+            session.save(update_fields=['summary_text'])
+        except Exception as e:
+            logger.error(f"Error saving summary_text: {e}")
     
     @database_sync_to_async
     def mark_session_completed(self):

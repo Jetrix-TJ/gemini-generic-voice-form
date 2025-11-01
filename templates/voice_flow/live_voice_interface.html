@@ -65,15 +65,18 @@
 
         <!-- Voice Interface -->
         <div class="text-center py-8">
-            <!-- Microphone Button -->
+            <!-- Conversation Controls -->
             <div class="mb-8">
-                <button id="mic-button" class="relative inline-flex items-center justify-center w-32 h-32 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                    <svg id="mic-icon" class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
-                    </svg>
-                </button>
-                <p class="text-xs text-gray-500 mt-4">Click to start • Hold to speak • Release when done</p>
-                
+                <div class="flex items-center justify-center space-x-4">
+                    <button id="btn-start" class="px-6 py-3 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        ▶️ Start Speaking
+                    </button>
+                    <button id="btn-stop" class="px-6 py-3 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        ⏹️ Stop Speaking
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-4">Click Start to speak, then Stop when you are done.</p>
+
                 <!-- Complete Survey Button (appears after 10s) -->
                 <button id="complete-button" style="display:none;" class="mt-6 px-8 py-3 bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors shadow-lg font-semibold">
                     ✅ Complete Survey
@@ -148,8 +151,8 @@
     const sessionId = "{{ session.session_id }}";
     const wsScheme = "{{ ws_scheme }}";
     const wsHost = "{{ host }}";
-    const finalizeUrl = `/s/${sessionId}/finalize/`;
-    const formFields = JSON.parse(`{{ form_config.fields|safe|escapejs }}`);
+    window.finalizeUrl = `/s/${sessionId}/finalize/`;
+    window.formFields = JSON.parse(`{{ form_config.fields|safe|escapejs }}`);
 </script>
 {% endblock %}
 

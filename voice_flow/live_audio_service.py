@@ -108,10 +108,17 @@ class GeminiLiveAudioService:
         Returns:
             Configuration dictionary
         """
+        # Server-side VAD configuration using Gemini Live automatic activity detection
+        silence_ms = 3000  # 3 seconds
         return {
             "system_instruction": system_instruction,
             "response_modalities": ["AUDIO"],  # Audio-only responses
-            "proactivity": {'proactive_audio': True}  # Allow model to be proactive
+            "proactivity": {'proactive_audio': True},  # Allow model to be proactive
+            "realtime_input_config": {
+                "automatic_activity_detection": {
+                    "silence_duration_ms": silence_ms
+                }
+            }
         }
     
     async def create_session(self, form_config: Dict, current_field: Optional[Dict] = None):

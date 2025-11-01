@@ -116,7 +116,8 @@ class MagicLinkSessionSerializer(serializers.ModelSerializer):
             'session_id', 'form_name', 'status', 'magic_link',
             'session_data', 'collected_data', 'completion_percentage',
             'created_at', 'expires_at', 'started_at', 'completed_at',
-            'duration_seconds', 'fields_completed', 'total_interactions'
+            'duration_seconds', 'fields_completed', 'total_interactions',
+            'summary_text'
         ]
         read_only_fields = [
             'session_id', 'status', 'collected_data', 'created_at',
