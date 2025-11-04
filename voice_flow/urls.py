@@ -18,11 +18,10 @@ urlpatterns = [
     path('dashboard/', views.dashboard, name='dashboard'),
     path('dashboard/forms/<str:form_id>/', views.form_detail, name='form_detail'),
     path('dashboard/forms/<str:form_id>/export.csv', views.export_form_csv, name='export_form_csv'),
-    path('up/accounts/sign', views.signup, name='signup'),
-    path('dashboard/link-api-key/', views.link_api_key, name='link_api_key'),
-    path('dashboard/create-api-key/', views.create_linked_api_key, name='create_linked_api_key'),
+    path('accounts/signup/', views.signup, name='signup'),
+    # Removed manual API key linking/creation routes; session-based auth is used for API access
     path('api/generate-form-schema/', views.generate_form_schema, name='generate_form_schema'),
-    path('dev/create-api-key/', views.dev_create_api_key, name='dev_create_api_key'),
+    # Removed dev API key endpoint from public routes
     path('f/<str:form_id>/', views.form_interface, name='form_interface'),
     path('s/<str:session_id>/finalize/', views.finalize_session_public, name='finalize_session_public'),
     path('s/<str:session_id>/', views.session_interface, name='session_interface'),

@@ -13,6 +13,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils.safestring import mark_safe
 import json
 from django.http import HttpResponse
@@ -54,10 +55,14 @@ class VoiceFormConfigViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """Return forms for the authenticated API key"""
+        """Return forms for the authenticated principal (session user or API key)."""
+        # API key auth path
         if hasattr(self.request, 'auth') and self.request.auth:
-            # self.request.auth is the APIKey object
             return VoiceFormConfig.objects.filter(api_key=self.request.auth)
+        # Session user path
+        user = getattr(self.request, 'user', None)
+        if getattr(user, 'is_authenticated', False):
+            return VoiceFormConfig.objects.filter(api_key__user=user)
         return VoiceFormConfig.objects.none()
     
     def create(self, request, *args, **kwargs):
@@ -137,10 +142,14 @@ class MagicLinkSessionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """Return sessions for forms owned by the authenticated API key"""
+        """Return sessions for forms owned by the authenticated principal (session user or API key)."""
+        # API key auth path
         if hasattr(self.request, 'auth') and self.request.auth:
-            # self.request.auth is the APIKey object
             return MagicLinkSession.objects.filter(form_config__api_key=self.request.auth)
+        # Session user path
+        user = getattr(self.request, 'user', None)
+        if getattr(user, 'is_authenticated', False):
+            return MagicLinkSession.objects.filter(form_config__api_key__user=user)
         return MagicLinkSession.objects.none()
     
     @action(detail=True, methods=['post'], url_path='retry-webhook')
@@ -151,6 +160,12 @@ class MagicLinkSessionViewSet(viewsets.ReadOnlyModelViewSet):
         if session.status != 'completed':
             return Response(
                 {'error': 'Session must be completed to retry webhook'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        # Ensure webhook URL is configured
+        if not getattr(session.form_config, 'callback_url', None):
+            return Response(
+                {'error': 'No callback_url configured for this form'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -261,6 +276,7 @@ def home(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@ensure_csrf_cookie
 def create_form_page(request):
     """Render the Create Form UI page"""
     return render(request, 'voice_flow/create_form.html')
@@ -435,8 +451,6 @@ def export_form_csv(request, form_id):
 
 def signup(request):
     """Public signup to create an account and auto-provision an API key."""
-    if request.user.is_authenticated:
-        return redirect('dashboard')
     if request.method == 'POST':
         form = UserCreationForm(request.POST)
         if form.is_valid():

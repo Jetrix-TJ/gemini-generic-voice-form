@@ -29,6 +29,15 @@ def send_webhook(self, session_id: str, attempt_number: int = 1):
     try:
         session = MagicLinkSession.objects.get(session_id=session_id)
         form_config = session.form_config
+
+        # If no callback URL is configured, skip webhook gracefully
+        if not getattr(form_config, 'callback_url', None):
+            logger.info(f"No callback_url configured; skipping webhook for session {session_id}")
+            return {
+                'success': True,
+                'skipped': True,
+                'reason': 'no_callback_url'
+            }
         
         # Prepare payload
         payload = {

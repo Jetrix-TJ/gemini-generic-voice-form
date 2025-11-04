@@ -93,7 +93,18 @@ class VoiceFormConfigSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """Create a new form configuration"""
-        api_key = self.context['request'].auth
+        request = self.context['request']
+        api_key = getattr(request, 'auth', None)
+        if api_key is None:
+            # Session-auth path: use the user's default/first API key, creating one if missing
+            user = getattr(request, 'user', None)
+            if not getattr(user, 'is_authenticated', False):
+                raise serializers.ValidationError('Authentication required')
+            from .models import APIKey  # local import to avoid cycles
+            user_key = APIKey.objects.filter(user=user).order_by('created_at').first()
+            if user_key is None:
+                user_key = APIKey.objects.create(name='Default Key', user=user)
+            api_key = user_key
         validated_data['api_key'] = api_key
         return super().create(validated_data)
 

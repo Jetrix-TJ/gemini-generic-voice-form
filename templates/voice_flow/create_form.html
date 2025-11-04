@@ -19,19 +19,7 @@
                 </div>
                 <div id="clarifications" class="mt-3 text-sm text-amber-700"></div>
             </div>
-            <div class="mb-4 p-3 border rounded bg-gray-50">
-                <div class="flex flex-col md:flex-row md:items-end md:space-x-3 space-y-2 md:space-y-0">
-                    <div class="flex-1">
-                        <label class="block text-sm font-medium text-gray-700">X-API-Key</label>
-                        <input id="api-key" type="text" class="mt-1 w-full border rounded px-3 py-2" placeholder="Paste your API key" />
-                    </div>
-                    <div class="flex space-x-2">
-                        <button id="btn-validate-key" class="border px-3 py-2 rounded">Validate Key</button>
-                        <button id="btn-create-dev-key" class="border px-3 py-2 rounded">Create Dev API Key</button>
-                    </div>
-                </div>
-                <p id="api-key-status" class="text-sm mt-2 text-gray-600"></p>
-            </div>
+            <!-- API key inputs removed: session-based auth is used for API access -->
             <h2 class="text-xl font-semibold mb-4">Form Details</h2>
             <div class="space-y-4">
                 <div>
@@ -47,10 +35,6 @@
                     <input id="ai-prompt" type="text" class="mt-1 w-full border rounded px-3 py-2" placeholder="Hello! I'd love to get your feedback." />
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Callback URL</label>
-                        <input id="callback-url" type="url" class="mt-1 w-full border rounded px-3 py-2" placeholder="https://webhook.site/your-id" />
-                    </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Success Message</label>
                         <input id="success-message" type="text" class="mt-1 w-full border rounded px-3 py-2" placeholder="Thank you for your feedback!" />
@@ -106,7 +90,12 @@
     const clarificationsEl = document.getElementById('clarifications');
 
     const apiBase = '/api/forms/';
-    const devCreateKeyUrl = '/dev/create-api-key/';
+    // Using session auth; no dev API key endpoint needed
+    function getCsrfToken() {
+        try {
+            return document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1] || '';
+        } catch (e) { return ''; }
+    }
     const genSchemaUrl = '/api/generate-form-schema/';
 
     function newFieldRow() {
@@ -202,7 +191,6 @@
             description: document.getElementById('form-description').value.trim(),
             fields,
             ai_prompt: document.getElementById('ai-prompt').value.trim(),
-            callback_url: document.getElementById('callback-url').value.trim(),
             success_message: document.getElementById('success-message').value.trim()
         };
     }
@@ -243,7 +231,8 @@
             if (!formDesc) { genStatus.textContent = 'Enter a description first.'; return; }
             const res = await fetch(genSchemaUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+                credentials: 'same-origin',
                 body: JSON.stringify({ formDesc })
             });
             if (!res.ok) {
@@ -269,18 +258,13 @@
         saveStatus.textContent = 'Saving...';
         const cfg = collectConfig();
         try {
-            const apiKeyInput = document.getElementById('api-key');
-            const apiKey = (apiKeyInput.value || localStorage.getItem('voicegen_api_key') || '').trim();
-            if (!apiKey) {
-                throw new Error('Missing API key. Enter it above.');
-            }
-            localStorage.setItem('voicegen_api_key', apiKey);
             const res = await fetch(apiBase, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-API-Key': apiKey || ''
+                    'X-CSRFToken': getCsrfToken()
                 },
+                credentials: 'same-origin',
                 body: JSON.stringify(cfg)
             });
             if (!res.ok) {
@@ -300,49 +284,7 @@
 
     saveBtn.addEventListener('click', saveForm);
 
-    // Prefill API key from local storage
-    const apiKeyInput = document.getElementById('api-key');
-    apiKeyInput.value = localStorage.getItem('voicegen_api_key') || '';
-
-    // Validate Key button
-    document.getElementById('btn-validate-key').addEventListener('click', async () => {
-        const key = apiKeyInput.value.trim();
-        const status = document.getElementById('api-key-status');
-        if (!key) { status.textContent = 'Enter a key first.'; return; }
-        status.textContent = 'Validating...';
-        try {
-            const res = await fetch(apiBase, { headers: { 'X-API-Key': key } });
-            if (res.ok) {
-                localStorage.setItem('voicegen_api_key', key);
-                status.textContent = '✅ Key valid and saved for this browser.';
-            } else {
-                const txt = await res.text();
-                status.textContent = `❌ Invalid: ${txt || res.status}`;
-            }
-        } catch (e) {
-            status.textContent = '❌ Validation failed.';
-        }
-    });
-
-    // Create Dev API Key (works only when DEBUG=True)
-    document.getElementById('btn-create-dev-key').addEventListener('click', async () => {
-        const status = document.getElementById('api-key-status');
-        status.textContent = 'Creating dev key...';
-        try {
-            const res = await fetch(devCreateKeyUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Browser Dev Key' }) });
-            if (!res.ok) {
-                const txt = await res.text();
-                status.textContent = `❌ Not allowed: ${txt || res.status}`;
-                return;
-            }
-            const data = await res.json();
-            apiKeyInput.value = data.key;
-            localStorage.setItem('voicegen_api_key', data.key);
-            status.textContent = '✅ Dev key created and saved.';
-        } catch (e) {
-            status.textContent = '❌ Failed to create dev key.';
-        }
-    });
+    // API key validation/creation UI removed
 })();
 </script>
 {% endblock %}

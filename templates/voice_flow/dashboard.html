@@ -42,70 +42,9 @@
     {% endif %}
   </div>
 
-  <div class="mt-8">
-    <h2 class="text-lg font-semibold mb-2">API Keys</h2>
-    {% if api_keys %}
-    <ul class="text-sm text-gray-700 list-disc list-inside">
-      {% for k in api_keys %}
-      <li><code class="bg-gray-100 px-1 py-0.5 rounded">{{ k.key }}</code> — {{ k.name }}</li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <p class="text-gray-600">You don't have any API keys linked to your account.</p>
-    {% endif %}
-
-    <div class="mt-4 flex items-center space-x-2">
-      <form id="link-key-form" class="flex items-center space-x-2">
-        <input id="link-key-input" type="text" placeholder="Paste existing API key" class="border rounded px-3 py-2 text-sm w-80" />
-        <button class="px-3 py-2 bg-indigo-600 text-white rounded text-sm">Link Key</button>
-      </form>
-      <button id="create-key-btn" class="px-3 py-2 bg-gray-100 rounded border text-sm">Create New Key</button>
-      <span id="key-status" class="ml-2 text-sm text-gray-600"></span>
-    </div>
-
-    <!-- Fallback server-side create (bypasses JS/fetch) -->
-    <form method="post" action="/dashboard/create-api-key/" class="mt-3">
-      {% csrf_token %}
-      <input type="hidden" name="name" value="My API Key" />
-      <button class="text-xs text-gray-600 underline" title="Use this if the JS request is blocked">Create via server (fallback)</button>
-    </form>
-  </div>
+  <!-- API Keys section removed: session-based auth is used for API access -->
 </div>
-<script>
-(function(){
-  const statusEl = document.getElementById('key-status');
-  const linkForm = document.getElementById('link-key-form');
-  const linkInput = document.getElementById('link-key-input');
-  const createBtn = document.getElementById('create-key-btn');
-  function getCsrfToken() {
-    try {
-      return document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1] || '';
-    } catch (e) { return ''; }
-  }
-  if (linkForm) linkForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    statusEl.textContent = 'Linking...';
-    try {
-      const form = new URLSearchParams();
-      form.set('key', linkInput.value.trim());
-      const res = await fetch('/dashboard/link-api-key/', {
-        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCsrfToken() },
-        body: form.toString()
-      });
-      const data = await res.json();
-      statusEl.textContent = res.ok ? 'Linked ✓. Refresh to see it.' : (data.error || 'Failed to link');
-    } catch (e) { statusEl.textContent = 'Failed to link'; }
-  });
-  if (createBtn) createBtn.addEventListener('click', async () => {
-    statusEl.textContent = 'Creating...';
-    try {
-      const res = await fetch('/dashboard/create-api-key/', { method: 'POST', headers: { 'X-CSRFToken': getCsrfToken() } });
-      const data = await res.json();
-      statusEl.textContent = res.ok ? `Created ✓ ${data.key}. Refresh to see it.` : 'Failed to create';
-    } catch (e) { statusEl.textContent = 'Failed to create'; }
-  });
-})();
-</script>
+<script></script>
 {% endblock %}
 
 

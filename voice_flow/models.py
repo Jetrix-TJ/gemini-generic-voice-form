@@ -64,8 +64,8 @@ class VoiceFormConfig(models.Model):
     fields = models.JSONField(help_text="Array of field definitions")
     ai_prompt = models.TextField(help_text="Initial AI prompt for the conversation")
     
-    # Callback Configuration
-    callback_url = models.URLField(help_text="Webhook URL to send completed data")
+    # Callback Configuration (optional)
+    callback_url = models.URLField(help_text="Webhook URL to send completed data", blank=True, null=True)
     callback_method = models.CharField(max_length=10, default='POST', choices=[('POST', 'POST'), ('PUT', 'PUT')])
     webhook_secret = models.CharField(max_length=128, default=generate_webhook_secret)
     

@@ -702,8 +702,7 @@ LEGACY FALLBACK (only if necessary):
         try:
             session = MagicLinkSession.objects.get(session_id=self.session_id)
             form_config = session.form_config
-            webhook_url = getattr(form_config, 'webhook_url', None) or form_config.webhook_config.get('url') if hasattr(form_config, 'webhook_config') else None
-            
+            webhook_url = getattr(form_config, 'callback_url', None)
             if webhook_url:
                 # Trigger async task
                 send_webhook.delay(session.session_id)

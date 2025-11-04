@@ -4,6 +4,12 @@
 <div class="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-12">
   <div class="bg-white shadow rounded-lg p-6">
     <h1 class="text-xl font-bold mb-4">Create account</h1>
+    {% if user.is_authenticated %}
+      <div class="mb-4 text-sm text-amber-700">
+        You are currently signed in. Submitting this form will switch you to the new account.
+        <a href="/accounts/logout/" class="underline">Log out</a> instead if you prefer.
+      </div>
+    {% endif %}
     <form method="post" action="{% url 'signup' %}">
       {% csrf_token %}
       {{ form.non_field_errors }}

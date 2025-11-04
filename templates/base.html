@@ -48,6 +48,13 @@
                     <a href="/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Home</a>
                     <a href="/create-form/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Create Form</a>
                     <a href="/api/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">API</a>
+                    {% if user.is_authenticated %}
+                        <a href="/dashboard/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                        <a href="/accounts/logout/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Logout</a>
+                    {% else %}
+                        <a href="/accounts/login/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Login</a>
+                        <a href="/accounts/signup/" class="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">Create account</a>
+                    {% endif %}
                 </div>
             </div>
         </div>

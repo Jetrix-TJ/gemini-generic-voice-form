@@ -331,7 +331,14 @@ class VoiceConversationConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def trigger_webhook(self):
         """Trigger webhook delivery"""
-        send_webhook.delay(self.session_id)
+        try:
+            session = MagicLinkSession.objects.select_related('form_config').get(session_id=self.session_id)
+            if getattr(session.form_config, 'callback_url', None):
+                send_webhook.delay(self.session_id)
+            else:
+                logger.info(f"No callback_url configured; skipping webhook for session {self.session_id}")
+        except Exception as e:
+            logger.error(f"Error triggering webhook: {e}")
     
     # AI helper methods
     
