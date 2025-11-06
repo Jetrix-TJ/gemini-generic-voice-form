@@ -132,6 +132,27 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Cookies and CSRF/session settings
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+# Lax is safe for same-site POSTs from forms/JS
+SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SAMESITE = os.getenv('CSRF_COOKIE_SAMESITE', 'Lax')
+
+# CSRF trusted origins (for reverse proxies/custom domains)
+_csrf_trusted = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if _csrf_trusted:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_trusted.split(',') if o.strip()]
+else:
+    # If DOMAIN_URL is set, add it as trusted origin (required on Django 4+ with scheme)
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(os.getenv('DOMAIN_URL', ''))
+        if parsed.scheme and parsed.netloc:
+            CSRF_TRUSTED_ORIGINS = [f\"{parsed.scheme}://{parsed.netloc}\"]
+    except Exception:
+        pass
+
 # REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

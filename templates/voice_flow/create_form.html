@@ -89,6 +89,33 @@
     const genStatus = document.getElementById('gen-status');
     const clarificationsEl = document.getElementById('clarifications');
 
+    // Helper to check auth before saving
+    async function ensureAuthenticated() {
+        try {
+            const res = await fetch('/api/forms/', { method: 'GET', credentials: 'same-origin' });
+            if (res.status === 401 || res.status === 403) {
+                saveStatus.textContent = 'Please sign in first.';
+                // Offer quick links
+                const loginLink = document.createElement('a');
+                loginLink.href = '/accounts/login/';
+                loginLink.textContent = ' Login';
+                loginLink.className = 'underline ml-1';
+                saveStatus.appendChild(loginLink);
+                const sep = document.createTextNode(' or ');
+                saveStatus.appendChild(sep);
+                const signupLink = document.createElement('a');
+                signupLink.href = '/accounts/signup/';
+                signupLink.textContent = 'Create account';
+                signupLink.className = 'underline';
+                saveStatus.appendChild(signupLink);
+                return false;
+            }
+            return true;
+        } catch (e) {
+            return true;
+        }
+    }
+
     const apiBase = '/api/forms/';
     // Using session auth; no dev API key endpoint needed
     function getCsrfToken() {
@@ -258,6 +285,9 @@
         saveStatus.textContent = 'Saving...';
         const cfg = collectConfig();
         try {
+            // Ensure user is logged in (session-based API)
+            const authed = await ensureAuthenticated();
+            if (!authed) return;
             const res = await fetch(apiBase, {
                 method: 'POST',
                 headers: {
