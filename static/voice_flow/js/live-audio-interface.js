@@ -44,6 +44,12 @@ class LiveAudioInterface {
         this.init();
     }
     
+    getCsrfToken() {
+        try {
+            return document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1] || '';
+        } catch (e) { return ''; }
+    }
+    
     async init() {
         // Initialize Audio Context
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
@@ -528,7 +534,8 @@ class LiveAudioInterface {
             if (!hasValue) return;
             fetch(window.finalizeUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
+                credentials: 'same-origin',
                 body: JSON.stringify({ fields: payload })
             }).then(async (res) => {
                 if (!res.ok) throw new Error(await res.text());
@@ -585,7 +592,8 @@ class LiveAudioInterface {
                 try {
                     const res = await fetch(window.finalizeUrl, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCsrfToken() },
+                        credentials: 'same-origin',
                         body: JSON.stringify({ fields: payload })
                     });
                     if (!res.ok) throw new Error(await res.text());

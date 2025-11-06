@@ -384,7 +384,15 @@ class LiveAudioConsumer(AsyncWebsocketConsumer):
                                     pass
 
                             elif name == 'complete_form':
-                                await self.handle_completion()
+                                # Prevent premature completion before any user input or extracted fields
+                                try:
+                                    has_user_msg = any((m.get('role') == 'user') for m in self.conversation_history)
+                                except Exception:
+                                    has_user_msg = False
+                                if has_user_msg or (self.collected_data and len(self.collected_data) > 0):
+                                    await self.handle_completion()
+                                else:
+                                    logger.info("Ignored early complete_form call (no user input or fields yet)")
                     except Exception as e:
                         logger.error(f"Error handling tool call: {e}")
                 

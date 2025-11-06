@@ -13,6 +13,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils.safestring import mark_safe
 import json
@@ -182,6 +183,7 @@ class MagicLinkSessionViewSet(viewsets.ReadOnlyModelViewSet):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@ensure_csrf_cookie
 def form_interface(request, form_id):
     """
     Render the voice interface for a form
@@ -209,6 +211,7 @@ def form_interface(request, form_id):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@ensure_csrf_cookie
 def session_interface(request, session_id):
     """
     Render the voice interface for a specific session
@@ -241,6 +244,7 @@ def session_interface(request, session_id):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def finalize_session_public(request, session_id):
     """Public endpoint to finalize a session with explicit field values.
     Body: { "fields": {"field_name": value, ...} }
