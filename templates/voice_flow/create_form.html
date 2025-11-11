@@ -8,7 +8,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Left: Form details and fields -->
-        <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow">
+        <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow h-[70vh] overflow-y-auto">
             <div class="mb-6 p-4 border-2 border-dashed rounded bg-gray-50">
                 <h2 class="text-lg font-semibold mb-2">Describe your form</h2>
                 <p class="text-sm text-gray-600 mb-2">Write what this form should do and the information to collect. We'll generate the schema and fields for you.</p>
@@ -50,10 +50,20 @@
                 <button id="save-form" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Save Form</button>
                 <span id="save-status" class="text-sm text-gray-600"></span>
             </div>
+
+            <!-- Magic link display with copy -->
+            <div id="magic-link-container" class="mt-4 hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Magic Link</label>
+                <div class="flex">
+                    <input id="magic-link-input" type="text" class="flex-1 border rounded-l px-3 py-2 text-sm" readonly />
+                    <button id="copy-magic-link" type="button" class="bg-gray-800 text-white px-3 py-2 rounded-r text-sm hover:bg-black">Copy</button>
+                </div>
+                <div id="copy-status" class="text-xs text-gray-600 mt-1"></div>
+            </div>
         </div>
 
-        <!-- Right: Field types and JSON preview -->
-        <div class="bg-white p-6 rounded-lg shadow space-y-6">
+        <!-- Right: Field types and helpful instructions -->
+        <div class="bg-white p-6 rounded-lg shadow space-y-6 h-[70vh] overflow-y-auto">
             <div>
                 <h3 class="text-lg font-semibold mb-2">Field Types</h3>
                 <ul class="list-disc list-inside text-gray-700 space-y-1">
@@ -68,8 +78,14 @@
                 </ul>
             </div>
             <div>
-                <h3 class="text-lg font-semibold mb-2">JSON Preview</h3>
-                <pre id="json-preview" class="bg-gray-900 text-gray-100 p-3 rounded text-sm overflow-x-auto">{}</pre>
+                <h3 class="text-lg font-semibold mb-2">Tips</h3>
+                <ul class="list-disc list-inside text-gray-700 space-y-2">
+                    <li>Use “Generate from description” to quickly scaffold your form.</li>
+                    <li>You can edit prompts, required flags, and validation for each field.</li>
+                    <li>“Initial AI Greeting” is the first thing users will hear.</li>
+                    <li>“Success Message” will be spoken and shown at the end of the session.</li>
+                    <li>After saving, use the Magic Link to share or embed your form.</li>
+                </ul>
             </div>
         </div>
     </div>
@@ -81,13 +97,18 @@
 // Minimal client-side builder for fields and JSON preview
 (function() {
     const fieldsList = document.getElementById('fields-list');
-    const jsonPreview = document.getElementById('json-preview');
+    const jsonPreview = document.getElementById('json-preview'); // May not exist if preview removed
     const addFieldBtn = document.getElementById('add-field');
     const saveBtn = document.getElementById('save-form');
     const saveStatus = document.getElementById('save-status');
     const generateBtn = document.getElementById('btn-generate-schema');
     const genStatus = document.getElementById('gen-status');
     const clarificationsEl = document.getElementById('clarifications');
+    const successMessageEl = document.getElementById('success-message');
+    const magicLinkContainer = document.getElementById('magic-link-container');
+    const magicLinkInput = document.getElementById('magic-link-input');
+    const copyMagicLinkBtn = document.getElementById('copy-magic-link');
+    const copyStatus = document.getElementById('copy-status');
 
     // Helper to check auth before saving
     async function ensureAuthenticated() {
@@ -223,8 +244,13 @@
     }
 
     function renderPreview() {
-        const cfg = collectConfig();
-        jsonPreview.textContent = JSON.stringify(cfg, null, 2);
+        if (!jsonPreview) return;
+        try {
+            const cfg = collectConfig();
+            jsonPreview.textContent = JSON.stringify(cfg, null, 2);
+        } catch (e) {
+            // ignore
+        }
     }
 
     addFieldBtn.addEventListener('click', () => {
@@ -234,6 +260,12 @@
 
     // Start with one field
     fieldsList.appendChild(newFieldRow());
+    // Autofill success message if empty
+    try {
+        if (successMessageEl && !successMessageEl.value) {
+            successMessageEl.value = "Thanks! Your responses have been recorded.";
+        }
+    } catch (e) {}
     renderPreview();
 
     function applyGeneratedSchema(schema) {
@@ -244,6 +276,14 @@
         if (schema.name) nameEl.value = schema.name;
         if (schema.description) descEl.value = schema.description;
         if (schema.ai_prompt) aiEl.value = schema.ai_prompt;
+        // Success message: use provided or sensible default
+        if (successMessageEl) {
+            if (schema.success_message) {
+                successMessageEl.value = schema.success_message;
+            } else if (!successMessageEl.value) {
+                successMessageEl.value = "Thank you! We've captured your response.";
+            }
+        }
         // Replace fields with generated
         fieldsList.innerHTML = '';
         (schema.fields || []).forEach(f => fieldsList.appendChild(newFieldRowPrefilled(f)));
@@ -303,8 +343,10 @@
             }
             const data = await res.json();
             saveStatus.textContent = `✅ Created! Form ID: ${data.form_id}`;
-            if (data.magic_link) {
-                saveStatus.textContent += ` | Magic Link: ${data.magic_link}`;
+            if (data.magic_link && magicLinkContainer && magicLinkInput) {
+                magicLinkInput.value = data.magic_link;
+                magicLinkContainer.classList.remove('hidden');
+                copyStatus.textContent = '';
             }
         } catch (e) {
             console.error(e);
@@ -313,6 +355,27 @@
     }
 
     saveBtn.addEventListener('click', saveForm);
+
+    // Copy magic link
+    if (copyMagicLinkBtn) {
+        copyMagicLinkBtn.addEventListener('click', async () => {
+            const link = magicLinkInput?.value || '';
+            copyStatus.textContent = '';
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(link);
+                } else {
+                    // Fallback
+                    magicLinkInput.select();
+                    document.execCommand('copy');
+                    magicLinkInput.blur();
+                }
+                copyStatus.textContent = 'Copied to clipboard.';
+            } catch (e) {
+                copyStatus.textContent = 'Copy failed. Please copy manually.';
+            }
+        });
+    }
 
     // API key validation/creation UI removed
 })();

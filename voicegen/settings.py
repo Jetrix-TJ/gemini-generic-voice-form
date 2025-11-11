@@ -149,7 +149,7 @@ else:
         from urllib.parse import urlparse
         parsed = urlparse(os.getenv('DOMAIN_URL', ''))
         if parsed.scheme and parsed.netloc:
-            CSRF_TRUSTED_ORIGINS = [f\"{parsed.scheme}://{parsed.netloc}\"]
+            CSRF_TRUSTED_ORIGINS = [f"{parsed.scheme}://{parsed.netloc}"]
     except Exception:
         pass
 
